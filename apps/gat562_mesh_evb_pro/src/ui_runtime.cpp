@@ -1,7 +1,9 @@
 #include "apps/gat562_mesh_evb_pro/ui_runtime.h"
 
 #include "apps/gat562_mesh_evb_pro/app_facade_runtime.h"
+#include "apps/gat562_mesh_evb_pro/debug_console.h"
 #include "boards/gat562_mesh_evb_pro/gat562_board.h"
+#include "ui/fonts/fusion_pixel_8_font.h"
 #include "platform/ui/device_runtime.h"
 #include "platform/ui/gps_runtime.h"
 #include "platform/ui/time_runtime.h"
@@ -17,6 +19,10 @@ namespace
 {
 using boards::gat562_mesh_evb_pro::BoardInputEvent;
 using boards::gat562_mesh_evb_pro::BoardInputKey;
+constexpr uint32_t kProbeHoldMs = 900;
+const char kProbeAscii[] = "ABC123";
+const char kProbeCjk[] = "\xE4\xB8\xAD\xE6\x96\x87";
+const char kProbeSymbols[] = "\xE2\x94\x80\xE2\x96\x88\xE2\x96\xA0";
 
 uint32_t now_ms() { return millis(); }
 time_t utc_now() { return static_cast<time_t>(sys::epoch_seconds_now()); }
@@ -54,6 +60,40 @@ ui::mono_128x64::InputAction to_input_action(
 
 bool s_initialized = false;
 ui::mono_128x64::Runtime* s_runtime = nullptr;
+bool s_probe_drawn = false;
+
+void drawProbePattern(::ui::mono_128x64::MonoDisplay& display, const ::ui::mono_128x64::MonoFont& font)
+{
+    ::ui::mono_128x64::TextRenderer renderer(font);
+    display.clear();
+
+    const int w = display.width();
+    const int h = display.height();
+    for (int x = 0; x < w; ++x)
+    {
+        display.drawPixel(x, 0, true);
+        display.drawPixel(x, h - 1, true);
+    }
+    for (int y = 0; y < h; ++y)
+    {
+        display.drawPixel(0, y, true);
+        display.drawPixel(w - 1, y, true);
+    }
+    for (int d = 0; d < 16; ++d)
+    {
+        display.drawPixel(2 + d, 2 + d, true);
+        display.drawPixel(w - 3 - d, 2 + d, true);
+    }
+
+    display.fillRect(96, 8, 16, 8, true);
+    display.fillRect(96, 20, 16, 8, false);
+    display.drawHLine(8, 31, 40);
+
+    renderer.drawText(display, 6, 8, kProbeAscii);
+    renderer.drawText(display, 6, 20, kProbeCjk);
+    renderer.drawText(display, 6, 32, kProbeSymbols);
+    display.present();
+}
 
 } // namespace
 
@@ -67,6 +107,7 @@ bool initialize()
 
     static ui::mono_128x64::HostCallbacks callbacks{};
     callbacks.app = &AppFacadeRuntime::instance();
+    callbacks.ui_font = &platform::nrf52::ui::fonts::fusion_pixel_8_font();
     callbacks.millis_fn = now_ms;
     callbacks.utc_now_fn = utc_now;
     callbacks.timezone_offset_min_fn = platform::ui::time::timezone_offset_min;
@@ -81,7 +122,9 @@ bool initialize()
     static ui::mono_128x64::Runtime runtime(::boards::gat562_mesh_evb_pro::Gat562Board::instance().monoDisplay(),
                                             callbacks);
     s_runtime = &runtime;
-    return s_runtime->begin();
+    const bool ok = s_runtime->begin();
+    debug_console::printf("[gat562] ui init display=%s\n", ok ? "ok" : "fail");
+    return ok;
 }
 
 void appendBootLog(const char* line)
@@ -99,6 +142,25 @@ void tick(const BoardInputEvent* event)
     {
         s_runtime->tick(to_input_action(event));
     }
+}
+
+void showDisplayProbe()
+{
+    if (!initialize())
+    {
+        debug_console::println("[gat562] display probe skipped: ui init failed");
+        return;
+    }
+    if (s_probe_drawn)
+    {
+        return;
+    }
+
+    auto& display = ::boards::gat562_mesh_evb_pro::Gat562Board::instance().monoDisplay();
+    drawProbePattern(display, platform::nrf52::ui::fonts::fusion_pixel_8_font());
+    s_probe_drawn = true;
+    debug_console::println("[gat562] display probe rendered");
+    delay(kProbeHoldMs);
 }
 
 } // namespace apps::gat562_mesh_evb_pro::ui_runtime

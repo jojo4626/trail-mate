@@ -11,6 +11,7 @@ class MeshAdapterRouterCore : public IMeshAdapter
 {
   public:
     bool installBackend(MeshProtocol protocol, std::unique_ptr<IMeshAdapter> backend);
+    void setActiveProtocol(MeshProtocol protocol);
     bool hasBackend() const;
     MeshProtocol backendProtocol() const;
     IMeshAdapter* backendForProtocol(MeshProtocol protocol);
@@ -44,8 +45,12 @@ class MeshAdapterRouterCore : public IMeshAdapter
     void processSendQueue() override;
 
   private:
-    std::unique_ptr<IMeshAdapter> backend_;
-    MeshProtocol backend_protocol_ = MeshProtocol::Meshtastic;
+    IMeshAdapter* activeBackend();
+    const IMeshAdapter* activeBackend() const;
+
+    std::unique_ptr<IMeshAdapter> meshtastic_backend_;
+    std::unique_ptr<IMeshAdapter> meshcore_backend_;
+    MeshProtocol active_protocol_ = MeshProtocol::Meshtastic;
 };
 
 } // namespace chat

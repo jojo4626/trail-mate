@@ -3,6 +3,7 @@
 #include "app/app_facades.h"
 #include "platform/ui/device_runtime.h"
 #include "platform/ui/gps_runtime.h"
+#include "ui/mono_128x64/text_renderer.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -10,12 +11,6 @@
 
 namespace ui::mono_128x64
 {
-
-enum class FontSize : uint8_t
-{
-    Small = 1,
-    Large = 2,
-};
 
 class MonoDisplay
 {
@@ -25,10 +20,8 @@ class MonoDisplay
     virtual bool begin() = 0;
     virtual int width() const = 0;
     virtual int height() const = 0;
-    virtual int charWidth(FontSize size) const = 0;
-    virtual int lineHeight(FontSize size) const = 0;
     virtual void clear() = 0;
-    virtual void drawText(int x, int y, const char* text, FontSize size, bool inverse = false) = 0;
+    virtual void drawPixel(int x, int y, bool on) = 0;
     virtual void drawHLine(int x, int y, int w) = 0;
     virtual void fillRect(int x, int y, int w, int h, bool on) = 0;
     virtual void present() = 0;
@@ -50,6 +43,9 @@ enum class InputAction : uint8_t
 struct HostCallbacks
 {
     app::IAppFacade* app = nullptr;
+    // Platform-owned mono UI font. NRF is expected to provide Fusion Pixel 8px
+    // here so ASCII and CJK share one renderer and one asset boundary.
+    const MonoFont* ui_font = nullptr;
     uint32_t (*millis_fn)() = nullptr;
     time_t (*utc_now_fn)() = nullptr;
     int (*timezone_offset_min_fn)() = nullptr;
@@ -134,13 +130,14 @@ class Runtime
     void drawTitleBar(const char* left, const char* right);
     void drawMenuList(const char* title, const char* const* items, size_t count, size_t selected);
     void drawFooterHint(const char* hint);
-    void drawTextClipped(int x, int y, int w, const char* text, FontSize size, bool inverse = false);
+    void drawTextClipped(int x, int y, int w, const char* text, bool inverse = false);
     bool editUsesHexCharset() const;
 
     uint32_t nowMs() const;
     app::IAppFacade* app() const;
 
     MonoDisplay& display_;
+    TextRenderer text_renderer_;
     HostCallbacks host_{};
     bool initialized_ = false;
     Page page_ = Page::BootLog;

@@ -3,8 +3,10 @@
 #include "chat/infra/meshtastic/mt_codec_pb.h"
 #include "chat/infra/meshtastic/mt_packet_wire.h"
 #include "chat/infra/meshtastic/mt_protocol_helpers.h"
+#include "chat/infra/meshtastic/mt_region.h"
 
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 namespace chat::runtime
@@ -19,9 +21,25 @@ std::string buildMeshtasticUserId(NodeId node_id)
     return user_id;
 }
 
-const char* resolveChannelName(ChannelId channel)
+constexpr uint8_t kDefaultPskIndex = 1;
+
+const char* resolveChannelName(const MeshConfig& config, ChannelId channel)
 {
-    return (channel == ChannelId::SECONDARY) ? "Secondary" : "Primary";
+    if (channel == ChannelId::SECONDARY)
+    {
+        return "Secondary";
+    }
+
+    if (config.use_preset)
+    {
+        const char* preset_name = chat::meshtastic::presetDisplayName(
+            static_cast<meshtastic_Config_LoRaConfig_ModemPreset>(config.modem_preset));
+        if (preset_name && preset_name[0] != '\0' && std::strcmp(preset_name, "Invalid") != 0)
+        {
+            return preset_name;
+        }
+    }
+    return "Custom";
 }
 
 const uint8_t* resolveChannelKey(const MeshConfig& config, ChannelId channel, size_t* out_len)
@@ -53,7 +71,14 @@ const uint8_t* resolveChannelKey(const MeshConfig& config, ChannelId channel, si
         return config.primary_key;
     }
 
-    return nullptr;
+    static uint8_t default_primary_psk[16] = {};
+    size_t expanded_len = 0;
+    chat::meshtastic::expandShortPsk(kDefaultPskIndex, default_primary_psk, &expanded_len);
+    if (out_len)
+    {
+        *out_len = expanded_len;
+    }
+    return expanded_len > 0 ? default_primary_psk : nullptr;
 }
 
 } // namespace
@@ -88,7 +113,8 @@ bool MeshtasticSelfAnnouncementCore::buildNodeInfoPacket(const MeshtasticAnnounc
 
     size_t key_len = 0;
     const uint8_t* key = resolveChannelKey(request.mesh_config, request.channel, &key_len);
-    out_packet->channel_hash = chat::meshtastic::computeChannelHash(resolveChannelName(request.channel),
+    out_packet->channel_hash = chat::meshtastic::computeChannelHash(resolveChannelName(request.mesh_config,
+                                                                                       request.channel),
                                                                     key,
                                                                     key_len);
     out_packet->wire_size = sizeof(out_packet->wire);

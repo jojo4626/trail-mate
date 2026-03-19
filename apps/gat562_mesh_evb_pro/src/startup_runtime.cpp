@@ -38,6 +38,12 @@ void run()
         (void)board.startGpsRuntime(cfg);
         debug_console::println("[gat562] startup app facade ok");
         ui_runtime::appendBootLog("app/gps ok");
+        char freq_text[20] = {};
+        if (board.formatLoraFrequencyMHz(board.activeLoraFrequencyHz(), freq_text, sizeof(freq_text)))
+        {
+            ui_runtime::appendBootLog(freq_text);
+        }
+        ui_runtime::appendBootLog(cfg.mesh_protocol == chat::MeshProtocol::MeshCore ? "proto MC" : "proto MT");
     }
     else
     {

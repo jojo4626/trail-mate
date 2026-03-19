@@ -239,11 +239,9 @@ bool Sx1262RadioPacketIo::pollReceive(platform::nrf52::arduino_common::chat::inf
         return false;
     }
 
-    const auto& profile = ::boards::gat562_mesh_evb_pro::kBoardProfile;
-    if (profile.lora.dio1 < 0 || digitalRead(profile.lora.dio1) == LOW)
-    {
-        return false;
-    }
+    // Do not hard-gate RX polling on DIO1. Some board variants can still
+    // expose valid SX1262 IRQ flags even when that GPIO isn't asserted as
+    // expected, and a strict gate here makes the device look "deaf".
 
     const uint32_t irq = radio_->getIrqFlags();
     if ((irq & RADIOLIB_SX126X_IRQ_RX_DONE) == 0)

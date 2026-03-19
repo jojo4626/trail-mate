@@ -4,6 +4,7 @@
 #include "chat/infra/meshtastic/mt_codec_pb.h"
 #include "chat/infra/meshtastic/mt_packet_wire.h"
 #include "chat/infra/meshtastic/mt_protocol_helpers.h"
+#include "chat/infra/meshtastic/mt_region.h"
 #include "chat/runtime/meshtastic_self_announcement_core.h"
 #include "chat/runtime/self_identity_policy.h"
 #include "meshtastic/mqtt.pb.h"
@@ -14,6 +15,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdarg>
 #include <cmath>
 #include <ctime>
 #include <cstring>
@@ -30,10 +32,24 @@ constexpr uint8_t kDefaultNextHopRetries = 2;
 constexpr uint8_t kDefaultAckRetries = 3;
 constexpr uint32_t kRetransmitIntervalMs = 1500;
 constexpr ::chat::NodeId kBroadcastNode = 0xFFFFFFFFUL;
+constexpr uint8_t kDefaultPskIndex = 1;
 
 using ::chat::meshtastic::fillDecodedPacketCommon;
 using ::chat::meshtastic::makeEncryptedPacketFromWire;
 using ::chat::meshtastic::readPbString;
+using ::chat::meshtastic::expandShortPsk;
+using ::chat::meshtastic::isZeroKey;
+
+void logMeshtasticRx(const char* format, ...)
+{
+    char buffer[192] = {};
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    Serial.print(buffer);
+    Serial2.print(buffer);
+}
 
 std::array<uint8_t, 6> readMac()
 {
@@ -52,7 +68,7 @@ const uint8_t* selectKey(const ::chat::MeshConfig& config,
 
     if (channel == ::chat::ChannelId::SECONDARY)
     {
-        if (config.secondary_key[0] != 0)
+        if (!isZeroKey(config.secondary_key, sizeof(config.secondary_key)))
         {
             if (out_len)
             {
@@ -63,7 +79,7 @@ const uint8_t* selectKey(const ::chat::MeshConfig& config,
         return nullptr;
     }
 
-    if (config.primary_key[0] != 0)
+    if (!isZeroKey(config.primary_key, sizeof(config.primary_key)))
     {
         if (out_len)
         {
@@ -71,7 +87,34 @@ const uint8_t* selectKey(const ::chat::MeshConfig& config,
         }
         return config.primary_key;
     }
-    return nullptr;
+
+    static uint8_t default_primary_psk[16] = {};
+    size_t expanded_len = 0;
+    expandShortPsk(kDefaultPskIndex, default_primary_psk, &expanded_len);
+    if (out_len)
+    {
+        *out_len = expanded_len;
+    }
+    return expanded_len > 0 ? default_primary_psk : nullptr;
+}
+
+const char* channelNameFor(const ::chat::MeshConfig& config, ::chat::ChannelId channel)
+{
+    if (channel == ::chat::ChannelId::SECONDARY)
+    {
+        return "Secondary";
+    }
+
+    if (config.use_preset)
+    {
+        const char* preset_name = ::chat::meshtastic::presetDisplayName(
+            static_cast<meshtastic_Config_LoRaConfig_ModemPreset>(config.modem_preset));
+        if (preset_name && preset_name[0] != '\0' && std::strcmp(preset_name, "Invalid") != 0)
+        {
+            return preset_name;
+        }
+    }
+    return "Custom";
 }
 
 const uint8_t* selectKeyByHash(const ::chat::MeshConfig& config,
@@ -90,7 +133,9 @@ const uint8_t* selectKeyByHash(const ::chat::MeshConfig& config,
 
     size_t key_len = 0;
     const uint8_t* key = selectKey(config, ::chat::ChannelId::PRIMARY, &key_len);
-    if (::chat::meshtastic::computeChannelHash("Primary", key, key_len) == channel_hash)
+    if (::chat::meshtastic::computeChannelHash(channelNameFor(config, ::chat::ChannelId::PRIMARY),
+                                               key,
+                                               key_len) == channel_hash)
     {
         if (out_len)
         {
@@ -100,7 +145,9 @@ const uint8_t* selectKeyByHash(const ::chat::MeshConfig& config,
     }
 
     key = selectKey(config, ::chat::ChannelId::SECONDARY, &key_len);
-    if (::chat::meshtastic::computeChannelHash("Secondary", key, key_len) == channel_hash)
+    if (::chat::meshtastic::computeChannelHash(channelNameFor(config, ::chat::ChannelId::SECONDARY),
+                                               key,
+                                               key_len) == channel_hash)
     {
         if (out_len)
         {
@@ -113,10 +160,6 @@ const uint8_t* selectKeyByHash(const ::chat::MeshConfig& config,
         return key;
     }
 
-    if (::chat::meshtastic::computeChannelHash("Primary", nullptr, 0) == channel_hash)
-    {
-        return nullptr;
-    }
     return nullptr;
 }
 
@@ -166,10 +209,9 @@ bool MeshtasticRadioAdapter::sendText(::chat::ChannelId channel, const std::stri
 
     size_t key_len = 0;
     const uint8_t* key = selectKey(config_, channel, &key_len);
-    const uint8_t channel_hash = ::chat::meshtastic::computeChannelHash(
-        channel == ::chat::ChannelId::SECONDARY ? "Secondary" : "Primary",
-        key,
-        key_len);
+    const uint8_t channel_hash = ::chat::meshtastic::computeChannelHash(channelNameFor(config_, channel),
+                                                                        key,
+                                                                        key_len);
 
     uint8_t wire[384] = {};
     size_t wire_size = sizeof(wire);
@@ -253,10 +295,9 @@ bool MeshtasticRadioAdapter::sendAppData(::chat::ChannelId channel, uint32_t por
     const ::chat::NodeId wire_dest = (dest == 0) ? kBroadcastNode : dest;
     size_t key_len = 0;
     const uint8_t* key = selectKey(config_, channel, &key_len);
-    const uint8_t channel_hash = ::chat::meshtastic::computeChannelHash(
-        channel == ::chat::ChannelId::SECONDARY ? "Secondary" : "Primary",
-        key,
-        key_len);
+    const uint8_t channel_hash = ::chat::meshtastic::computeChannelHash(channelNameFor(config_, channel),
+                                                                        key,
+                                                                        key_len);
 
     uint8_t wire[384] = {};
     size_t wire_size = sizeof(wire);
@@ -411,7 +452,23 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
     size_t payload_size = sizeof(payload);
     if (!::chat::meshtastic::parseWirePacket(data, size, &header, payload, &payload_size))
     {
+        logMeshtasticRx("[gat562][mt] parse fail len=%u\n", static_cast<unsigned>(size));
         return;
+    }
+
+    HistoryResult history{};
+    if (header.from != node_id_)
+    {
+        history = updatePacketHistory(header, true);
+        if (history.seen_recently && !history.was_upgraded)
+        {
+            logMeshtasticRx("[gat562][mt] dedup from=%08lX id=%lu relay=%u ch=%u\n",
+                            static_cast<unsigned long>(header.from),
+                            static_cast<unsigned long>(header.id),
+                            static_cast<unsigned>(header.relay_node),
+                            static_cast<unsigned>(header.channel));
+            return;
+        }
     }
 
     uint8_t plain[256] = {};
@@ -420,15 +477,37 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
     size_t key_len = 0;
     const uint8_t* key = selectKeyByHash(config_, header.channel, &key_len, &channel);
     const bool want_ack_flag = (header.flags & ::chat::meshtastic::PACKET_FLAGS_WANT_ACK_MASK) != 0;
+    if (header.channel != 0 && !key)
+    {
+        logMeshtasticRx("[gat562][mt] unknown channel from=%08lX to=%08lX id=%lu ch=%u\n",
+                        static_cast<unsigned long>(header.from),
+                        static_cast<unsigned long>(header.to),
+                        static_cast<unsigned long>(header.id),
+                        static_cast<unsigned>(header.channel));
+        return;
+    }
     if (!::chat::meshtastic::decryptPayload(header, payload, payload_size,
                                             key, key_len, plain, &plain_len))
     {
+        logMeshtasticRx("[gat562][mt] decrypt fail from=%08lX to=%08lX id=%lu ch=%u key=%u ack=%u\n",
+                        static_cast<unsigned long>(header.from),
+                        static_cast<unsigned long>(header.to),
+                        static_cast<unsigned long>(header.id),
+                        static_cast<unsigned>(header.channel),
+                        static_cast<unsigned>(key_len),
+                        static_cast<unsigned>(want_ack_flag ? 1U : 0U));
         size_t primary_key_len = 0;
         const uint8_t* primary_key = selectKey(config_, ::chat::ChannelId::PRIMARY, &primary_key_len);
-        const uint8_t primary_hash = ::chat::meshtastic::computeChannelHash("Primary", primary_key, primary_key_len);
+        const uint8_t primary_hash = ::chat::meshtastic::computeChannelHash(
+            channelNameFor(config_, ::chat::ChannelId::PRIMARY),
+            primary_key,
+            primary_key_len);
         size_t secondary_key_len = 0;
         const uint8_t* secondary_key = selectKey(config_, ::chat::ChannelId::SECONDARY, &secondary_key_len);
-        const uint8_t secondary_hash = ::chat::meshtastic::computeChannelHash("Secondary", secondary_key, secondary_key_len);
+        const uint8_t secondary_hash = ::chat::meshtastic::computeChannelHash(
+            channelNameFor(config_, ::chat::ChannelId::SECONDARY),
+            secondary_key,
+            secondary_key_len);
 
         if (header.to == node_id_ && want_ack_flag)
         {
@@ -507,6 +586,25 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
     const bool decoded_ok = pb_decode(&stream, meshtastic_Data_fields, &decoded);
     if (decoded_ok)
     {
+        logMeshtasticRx("[gat562][mt] decoded from=%08lX to=%08lX id=%lu port=%u ch=%u hop=%u\n",
+                        static_cast<unsigned long>(header.from),
+                        static_cast<unsigned long>(header.to),
+                        static_cast<unsigned long>(header.id),
+                        static_cast<unsigned>(decoded.portnum),
+                        static_cast<unsigned>(header.channel),
+                        static_cast<unsigned>(hop_limit));
+    }
+    else
+    {
+        logMeshtasticRx("[gat562][mt] pb decode fail from=%08lX to=%08lX id=%lu plain=%u ch=%u\n",
+                        static_cast<unsigned long>(header.from),
+                        static_cast<unsigned long>(header.to),
+                        static_cast<unsigned long>(header.id),
+                        static_cast<unsigned>(plain_len),
+                        static_cast<unsigned>(header.channel));
+    }
+    if (decoded_ok)
+    {
         queueMqttProxyPublishFromWire(data, size, &decoded, channel);
     }
 
@@ -523,7 +621,6 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
     }
 
     maybeHandleObservedRelay(header);
-    const HistoryResult history = updatePacketHistory(header, true);
     const bool duplicate = history.seen_recently && !history.was_upgraded;
 
     if (decoded_ok && decoded.portnum == meshtastic_PortNum_NODEINFO_APP && decoded.payload.size > 0 && node_store_)
@@ -606,8 +703,25 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
         incoming.encrypted = key_len > 0;
         incoming.hop_limit = hop_limit;
         incoming.rx_meta = rx_meta;
+        logMeshtasticRx("[gat562][mt] text queued from=%08lX to=%08lX id=%lu len=%u text=\"%s\"\n",
+                        static_cast<unsigned long>(incoming.from),
+                        static_cast<unsigned long>(incoming.to),
+                        static_cast<unsigned long>(incoming.msg_id),
+                        static_cast<unsigned>(incoming.text.size()),
+                        incoming.text.c_str());
         text_queue_.push(std::move(incoming));
         return;
+    }
+
+    if (decoded_ok &&
+        (decoded.portnum == meshtastic_PortNum_TEXT_MESSAGE_APP ||
+         decoded.portnum == meshtastic_PortNum_TEXT_MESSAGE_COMPRESSED_APP))
+    {
+        logMeshtasticRx("[gat562][mt] text decode fail from=%08lX id=%lu payload=%u plain=%u\n",
+                        static_cast<unsigned long>(header.from),
+                        static_cast<unsigned long>(header.id),
+                        static_cast<unsigned>(decoded.payload.size),
+                        static_cast<unsigned>(plain_len));
     }
 
     ::chat::MeshIncomingData app_data{};
@@ -622,6 +736,12 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
         app_data.hop_limit = hop_limit;
         app_data.want_response = decoded.want_response;
         app_data.rx_meta = rx_meta;
+        logMeshtasticRx("[gat562][mt] app queued from=%08lX to=%08lX id=%lu port=%u len=%u\n",
+                        static_cast<unsigned long>(app_data.from),
+                        static_cast<unsigned long>(app_data.to),
+                        static_cast<unsigned long>(app_data.packet_id),
+                        static_cast<unsigned>(app_data.portnum),
+                        static_cast<unsigned>(app_data.payload.size()));
         data_queue_.push(std::move(app_data));
     }
 }
@@ -877,10 +997,9 @@ bool MeshtasticRadioAdapter::sendTraceRouteResponse(::chat::NodeId dest, uint32_
 
     size_t key_len = 0;
     const uint8_t* key = selectKey(config_, channel, &key_len);
-    const uint8_t channel_hash = ::chat::meshtastic::computeChannelHash(
-        channel == ::chat::ChannelId::SECONDARY ? "Secondary" : "Primary",
-        key,
-        key_len);
+    const uint8_t channel_hash = ::chat::meshtastic::computeChannelHash(channelNameFor(config_, channel),
+                                                                        key,
+                                                                        key_len);
 
     uint8_t wire[384] = {};
     size_t wire_size = sizeof(wire);
@@ -1419,7 +1538,10 @@ uint8_t MeshtasticRadioAdapter::mqttChannelHashForId(const char* channel_id, boo
     {
         known = mqtt_proxy_settings_.primary_downlink_enabled;
         key = selectKey(config_, ::chat::ChannelId::PRIMARY, &key_len);
-        hash = ::chat::meshtastic::computeChannelHash("Primary", key, key_len);
+        hash = ::chat::meshtastic::computeChannelHash(
+            channelNameFor(config_, ::chat::ChannelId::PRIMARY),
+            key,
+            key_len);
     }
     else if (channel_id && !mqtt_proxy_settings_.secondary_channel_id.empty() &&
              std::strcmp(channel_id, mqtt_proxy_settings_.secondary_channel_id.c_str()) == 0)
@@ -1427,7 +1549,10 @@ uint8_t MeshtasticRadioAdapter::mqttChannelHashForId(const char* channel_id, boo
         known = mqtt_proxy_settings_.secondary_downlink_enabled;
         channel = ::chat::ChannelId::SECONDARY;
         key = selectKey(config_, ::chat::ChannelId::SECONDARY, &key_len);
-        hash = ::chat::meshtastic::computeChannelHash("Secondary", key, key_len);
+        hash = ::chat::meshtastic::computeChannelHash(
+            channelNameFor(config_, ::chat::ChannelId::SECONDARY),
+            key,
+            key_len);
     }
 
     if (out_known)

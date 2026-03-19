@@ -19,50 +19,50 @@ namespace
 {
 
 constexpr const char* kMainMenuItems[] = {
-    "Chats",
-    "New Message",
-    "Settings",
-    "Identity",
-    "Radio",
-    "Device",
+    "CHATS",
+    "NEW MESSAGE",
+    "SETTINGS",
+    "IDENTITY",
+    "RADIO",
+    "DEVICE",
     "GNSS",
-    "Actions",
+    "ACTIONS",
 };
 
 constexpr const char* kSettingsMenuItems[] = {
-    "Identity",
-    "Radio",
-    "Device",
+    "IDENTITY",
+    "RADIO",
+    "DEVICE",
 };
 
 constexpr const char* kIdentityItems[] = {
-    "User Name",
-    "Short Name",
+    "USER NAME",
+    "SHORT NAME",
 };
 
 constexpr const char* kRadioItems[] = {
-    "Protocol",
-    "TX Power",
-    "Region",
-    "Preset",
-    "Channel",
-    "Encrypt",
+    "PROTOCOL",
+    "TX POWER",
+    "REGION",
+    "PRESET",
+    "CHANNEL",
+    "ENCRYPT",
     "PSK/Name",
 };
 
 constexpr const char* kDeviceItems[] = {
     "BLE",
-    "Time Zone",
+    "TIME ZONE",
     "GPS",
-    "GPS Interval",
-    "Chat Channel",
+    "GPS INTERVAL",
+    "CHAT CHANNEL",
 };
 
 constexpr const char* kActionItems[] = {
-    "Broadcast ID",
-    "Clear Nodes",
-    "Clear Msgs",
-    "Reset Radio",
+    "BROADCAST ID",
+    "CLEAR NODES",
+    "CLEAR MSGS",
+    "RESET RADIO",
 };
 
 constexpr const char* kWeekdays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
@@ -120,7 +120,7 @@ void popChar(char* buffer, size_t& len)
 
 const char* protocolShortLabel(chat::MeshProtocol protocol)
 {
-    return protocol == chat::MeshProtocol::MeshCore ? "mc" : "mt";
+    return protocol == chat::MeshProtocol::MeshCore ? "MC" : "MT";
 }
 
 bool encryptEnabled(const app::AppConfig& config)
@@ -189,6 +189,7 @@ bool hexToBytes(const char* hex, uint8_t* out, size_t out_len)
 
 Runtime::Runtime(MonoDisplay& display, const HostCallbacks& host)
     : display_(display),
+      text_renderer_(host.ui_font ? *host.ui_font : builtin_ui_font()),
       host_(host)
 {
 }
@@ -575,13 +576,13 @@ void Runtime::render()
 
 void Runtime::renderBootLog()
 {
-    drawTitleBar("boot", nullptr);
-    const int line_h = display_.lineHeight(FontSize::Small);
+    drawTitleBar("BOOT", nullptr);
+    const int line_h = text_renderer_.lineHeight();
     const int start_y = 10;
     const size_t visible = std::min(boot_log_count_, static_cast<size_t>(6));
     for (size_t i = 0; i < visible; ++i)
     {
-        drawTextClipped(0, start_y + static_cast<int>(i * line_h), display_.width(), boot_log_[boot_log_count_ - visible + i], FontSize::Small);
+        drawTextClipped(0, start_y + static_cast<int>(i * line_h), display_.width(), boot_log_[boot_log_count_ - visible + i]);
     }
 }
 
@@ -604,37 +605,37 @@ void Runtime::renderScreensaver()
 
     drawTitleBar(protocol, freq[0] != '\0' ? freq : nullptr);
 
-    const int time_w = static_cast<int>(std::strlen(time_buf)) * display_.charWidth(FontSize::Large);
+    const int time_w = text_renderer_.measureTextWidth(time_buf);
     const int time_x = std::max(0, (display_.width() - time_w) / 2);
-    display_.drawText(time_x, 18, time_buf, FontSize::Large);
+    text_renderer_.drawText(display_, time_x, 18, time_buf);
 
-    const int date_w = static_cast<int>(std::strlen(date_buf)) * display_.charWidth(FontSize::Small);
+    const int date_w = text_renderer_.measureTextWidth(date_buf);
     const int date_x = std::max(0, (display_.width() - date_w) / 2);
-    display_.drawText(date_x, 40, date_buf, FontSize::Small);
+    text_renderer_.drawText(display_, date_x, 34, date_buf);
 
-    const int node_w = static_cast<int>(std::strlen(node_buf)) * display_.charWidth(FontSize::Small);
+    const int node_w = text_renderer_.measureTextWidth(node_buf);
     const int node_x = std::max(0, (display_.width() - node_w) / 2);
-    display_.drawText(node_x, 54, node_buf, FontSize::Small);
+    text_renderer_.drawText(display_, node_x, 50, node_buf);
 }
 
 void Runtime::renderMainMenu()
 {
-    drawMenuList("menu", kMainMenuItems, arrayCount(kMainMenuItems), main_menu_index_);
+    drawMenuList("MENU", kMainMenuItems, arrayCount(kMainMenuItems), main_menu_index_);
     drawFooterHint("< saver   ok >");
 }
 
 void Runtime::renderChatList()
 {
     rebuildConversationList();
-    drawTitleBar("chats", nullptr);
+    drawTitleBar("CHATS", nullptr);
     if (conversation_count_ == 0)
     {
-        display_.drawText(0, 18, "No conversations", FontSize::Small);
+        text_renderer_.drawText(display_, 0, 18, "NO CONVERSATIONS");
         drawFooterHint("< back   new >");
         return;
     }
 
-    const int line_h = display_.lineHeight(FontSize::Small);
+    const int line_h = text_renderer_.lineHeight();
     for (size_t i = 0; i < conversation_count_ && i < 6; ++i)
     {
         const bool selected = (i == chat_list_index_);
@@ -643,7 +644,7 @@ void Runtime::renderChatList()
         std::snprintf(line, sizeof(line), "%s%s",
                       conv.unread > 0 ? "*" : "",
                       conv.name.c_str());
-        drawTextClipped(0, 10 + static_cast<int>(i * line_h), display_.width(), line, FontSize::Small, selected);
+        drawTextClipped(0, 10 + static_cast<int>(i * line_h), display_.width(), line, selected);
     }
     drawFooterHint("< back   open >");
 }
@@ -654,7 +655,7 @@ void Runtime::renderConversation()
     char title[20] = {};
     if (active_conversation_.peer == 0)
     {
-        copyText(title, "broadcast");
+        copyText(title, "BROADCAST");
     }
     else
     {
@@ -664,12 +665,12 @@ void Runtime::renderConversation()
 
     if (message_count_ == 0)
     {
-        display_.drawText(0, 18, "No messages", FontSize::Small);
+        text_renderer_.drawText(display_, 0, 18, "NO MESSAGES");
         drawFooterHint("< back   reply >");
         return;
     }
 
-    const int line_h = display_.lineHeight(FontSize::Small);
+    const int line_h = text_renderer_.lineHeight();
     const size_t visible = std::min(message_count_, static_cast<size_t>(5));
     for (size_t i = 0; i < visible; ++i)
     {
@@ -677,36 +678,36 @@ void Runtime::renderConversation()
         char line[40] = {};
         const char prefix = (msg.from == 0) ? '>' : '<';
         std::snprintf(line, sizeof(line), "%c %s", prefix, msg.text.c_str());
-        drawTextClipped(0, 10 + static_cast<int>(i * line_h), display_.width(), line, FontSize::Small, i == visible - 1);
+        drawTextClipped(0, 10 + static_cast<int>(i * line_h), display_.width(), line, i == visible - 1);
     }
     drawFooterHint("< back   reply >");
 }
 
 void Runtime::renderCompose()
 {
-    drawTitleBar(edit_target_ == EditTarget::Message ? "compose" : "edit", nullptr);
-    drawTextClipped(0, 12, display_.width(), compose_buffer_, FontSize::Small);
+    drawTitleBar(edit_target_ == EditTarget::Message ? "COMPOSE" : "EDIT", nullptr);
+    drawTextClipped(0, 12, display_.width(), compose_buffer_);
 
     const char* charset = editUsesHexCharset() ? kHexCharset : kComposeCharset;
     const size_t charset_len = std::strlen(charset);
     const char current = charset[compose_charset_index_ % charset_len];
     char pick[8] = {};
     std::snprintf(pick, sizeof(pick), "[%c]", current);
-    display_.drawText(0, 34, pick, FontSize::Large);
+    text_renderer_.drawText(display_, 0, 34, pick);
 
-    display_.drawText(40, 34, "U/D pick", FontSize::Small);
-    display_.drawText(40, 44, "R add", FontSize::Small);
-    display_.drawText(40, 54, "L del OK", FontSize::Small);
+    text_renderer_.drawText(display_, 40, 34, "U/D PICK");
+    text_renderer_.drawText(display_, 40, 44, "R ADD");
+    text_renderer_.drawText(display_, 40, 54, "L DEL OK");
 }
 
 void Runtime::renderSettingsMenu()
 {
-    drawMenuList("settings", kSettingsMenuItems, arrayCount(kSettingsMenuItems), settings_menu_index_);
+    drawMenuList("SETTINGS", kSettingsMenuItems, arrayCount(kSettingsMenuItems), settings_menu_index_);
 }
 
 void Runtime::renderIdentitySettings()
 {
-    drawTitleBar("identity", nullptr);
+    drawTitleBar("IDENTITY", nullptr);
     char value[40] = {};
     for (size_t i = 0; i < arrayCount(kIdentityItems); ++i)
     {
@@ -721,15 +722,15 @@ void Runtime::renderIdentitySettings()
 
         char line[48] = {};
         std::snprintf(line, sizeof(line), "%s: %s", kIdentityItems[i], value[0] ? value : "-");
-        drawTextClipped(0, 10 + static_cast<int>(i * display_.lineHeight(FontSize::Small)),
-                        display_.width(), line, FontSize::Small, i == identity_index_);
+        drawTextClipped(0, 10 + static_cast<int>(i * text_renderer_.lineHeight()),
+                        display_.width(), line, i == identity_index_);
     }
-    drawFooterHint("< back   edit >");
+    drawFooterHint("< BACK   EDIT >");
 }
 
 void Runtime::renderRadioSettings()
 {
-    drawTitleBar("radio", protocolShortLabel(app()->getConfig().mesh_protocol));
+    drawTitleBar("RADIO", protocolShortLabel(app()->getConfig().mesh_protocol));
     char value[40] = {};
     auto& cfg = app()->getConfig();
     for (size_t i = 0; i < arrayCount(kRadioItems); ++i)
@@ -806,70 +807,70 @@ void Runtime::renderRadioSettings()
 
         char line[48] = {};
         std::snprintf(line, sizeof(line), "%s: %s", kRadioItems[i], value);
-        drawTextClipped(0, 10 + static_cast<int>(i * display_.lineHeight(FontSize::Small)),
-                        display_.width(), line, FontSize::Small, i == radio_index_);
+        drawTextClipped(0, 10 + static_cast<int>(i * text_renderer_.lineHeight()),
+                        display_.width(), line, i == radio_index_);
     }
-    drawFooterHint("L/R adj  OK edit");
+    drawFooterHint("L/R ADJ  OK EDIT");
 }
 
 void Runtime::renderDeviceSettings()
 {
-    drawTitleBar("device", nullptr);
+    drawTitleBar("DEVICE", nullptr);
     char line[48] = {};
     for (size_t i = 0; i < arrayCount(kDeviceItems); ++i)
     {
         if (i == 0)
         {
-            std::snprintf(line, sizeof(line), "BLE: %s", app()->isBleEnabled() ? "On" : "Off");
+            std::snprintf(line, sizeof(line), "BLE: %s", app()->isBleEnabled() ? "ON" : "OFF");
         }
         else if (i == 1)
         {
             const int tz = host_.timezone_offset_min_fn ? host_.timezone_offset_min_fn() : 0;
-            std::snprintf(line, sizeof(line), "Time Zone: UTC%+d", tz / 60);
+            std::snprintf(line, sizeof(line), "TIME ZONE: UTC%+d", tz / 60);
         }
         else if (i == 2)
         {
-            std::snprintf(line, sizeof(line), "GPS: %s", app()->getConfig().gps_mode != 0 ? "On" : "Off");
+            std::snprintf(line, sizeof(line), "GPS: %s", app()->getConfig().gps_mode != 0 ? "ON" : "OFF");
         }
         else if (i == 3)
         {
-            std::snprintf(line, sizeof(line), "GPS Int: %lus",
+            std::snprintf(line, sizeof(line), "GPS INT: %lus",
                           static_cast<unsigned long>(app()->getConfig().gps_interval_ms / 1000UL));
         }
         else
         {
-            std::snprintf(line, sizeof(line), "Chat Ch: %s",
-                          app()->getConfig().chat_channel == 0 ? "Primary" : "Secondary");
+            std::snprintf(line, sizeof(line), "CHAT CH: %s",
+                          app()->getConfig().chat_channel == 0 ? "PRIMARY" : "SECONDARY");
         }
-        drawTextClipped(0, 10 + static_cast<int>(i * display_.lineHeight(FontSize::Small)),
-                        display_.width(), line, FontSize::Small, i == device_index_);
+        drawTextClipped(0, 10 + static_cast<int>(i * text_renderer_.lineHeight()),
+                        display_.width(), line, i == device_index_);
     }
-    drawFooterHint("L/R toggle");
+    drawFooterHint("L/R TOGGLE");
 }
 
 void Runtime::renderGnssPage()
 {
-    drawTitleBar("gnss", nullptr);
+    drawTitleBar("GNSS", nullptr);
     const auto state = host_.gps_data_fn ? host_.gps_data_fn() : platform::ui::gps::GpsState{};
     char line[40] = {};
-    std::snprintf(line, sizeof(line), "Enabled: %s", (host_.gps_enabled_fn && host_.gps_enabled_fn()) ? "yes" : "no");
-    display_.drawText(0, 12, line, FontSize::Small);
-    std::snprintf(line, sizeof(line), "Powered: %s", (host_.gps_powered_fn && host_.gps_powered_fn()) ? "yes" : "no");
-    display_.drawText(0, 22, line, FontSize::Small);
-    std::snprintf(line, sizeof(line), "Fix: %s", state.valid ? "yes" : "no");
-    display_.drawText(0, 32, line, FontSize::Small);
+    std::snprintf(line, sizeof(line), "ENABLED: %s", (host_.gps_enabled_fn && host_.gps_enabled_fn()) ? "YES" : "NO");
+    text_renderer_.drawText(display_, 0, 12, line);
+    std::snprintf(line, sizeof(line), "POWERED: %s", (host_.gps_powered_fn && host_.gps_powered_fn()) ? "YES" : "NO");
+    text_renderer_.drawText(display_, 0, 22, line);
+    std::snprintf(line, sizeof(line), "FIX: %s", state.valid ? "YES" : "NO");
+    text_renderer_.drawText(display_, 0, 32, line);
     if (state.valid)
     {
-        std::snprintf(line, sizeof(line), "Lat %.4f", state.lat);
-        display_.drawText(0, 42, line, FontSize::Small);
-        std::snprintf(line, sizeof(line), "Lng %.4f", state.lng);
-        display_.drawText(0, 52, line, FontSize::Small);
+        std::snprintf(line, sizeof(line), "LAT %.4f", state.lat);
+        text_renderer_.drawText(display_, 0, 42, line);
+        std::snprintf(line, sizeof(line), "LNG %.4f", state.lng);
+        text_renderer_.drawText(display_, 0, 52, line);
     }
 }
 
 void Runtime::renderActionPage()
 {
-    drawMenuList("actions", kActionItems, arrayCount(kActionItems), action_index_);
+    drawMenuList("ACTIONS", kActionItems, arrayCount(kActionItems), action_index_);
 }
 
 void Runtime::enterPage(Page page)
@@ -1291,12 +1292,12 @@ void Runtime::drawTitleBar(const char* left, const char* right)
 {
     if (left && left[0] != '\0')
     {
-        display_.drawText(0, 0, left, FontSize::Small);
+        text_renderer_.drawText(display_, 0, 0, left);
     }
     if (right && right[0] != '\0')
     {
-        const int w = static_cast<int>(std::strlen(right)) * display_.charWidth(FontSize::Small);
-        display_.drawText(std::max(0, display_.width() - w), 0, right, FontSize::Small);
+        const int w = text_renderer_.measureTextWidth(right);
+        text_renderer_.drawText(display_, std::max(0, display_.width() - w), 0, right);
     }
     display_.drawHLine(0, 8, display_.width());
 }
@@ -1304,10 +1305,10 @@ void Runtime::drawTitleBar(const char* left, const char* right)
 void Runtime::drawMenuList(const char* title, const char* const* items, size_t count, size_t selected)
 {
     drawTitleBar(title, nullptr);
-    const int line_h = display_.lineHeight(FontSize::Small);
+    const int line_h = text_renderer_.lineHeight();
     for (size_t i = 0; i < count && i < 5; ++i)
     {
-        drawTextClipped(0, 10 + static_cast<int>(i * line_h), display_.width(), items[i], FontSize::Small, i == selected);
+        drawTextClipped(0, 10 + static_cast<int>(i * line_h), display_.width(), items[i], i == selected);
     }
 }
 
@@ -1317,34 +1318,35 @@ void Runtime::drawFooterHint(const char* hint)
     {
         return;
     }
-    drawTextClipped(0, 56, display_.width(), hint, FontSize::Small);
+    drawTextClipped(0, 56, display_.width(), hint);
 }
 
-void Runtime::drawTextClipped(int x, int y, int w, const char* text, FontSize size, bool inverse)
+void Runtime::drawTextClipped(int x, int y, int w, const char* text, bool inverse)
 {
     if (!text || w <= 0)
     {
         return;
     }
 
-    const int cw = std::max(1, display_.charWidth(size));
-    const size_t max_chars = static_cast<size_t>(std::max(1, w / cw));
     char clipped[48] = {};
-    if (std::strlen(text) <= max_chars)
+    if (text_renderer_.measureTextWidth(text) <= w)
     {
         copyText(clipped, text);
     }
-    else if (max_chars > 3)
+    else if (w > text_renderer_.ellipsisWidth())
     {
-        std::strncpy(clipped, text, max_chars - 3);
-        std::strcpy(clipped + (max_chars - 3), "...");
+        const size_t keep_bytes = text_renderer_.clipTextToWidth(text, w - text_renderer_.ellipsisWidth());
+        std::memcpy(clipped, text, std::min(keep_bytes, sizeof(clipped) - 4));
+        clipped[std::min(keep_bytes, sizeof(clipped) - 4)] = '\0';
+        std::strcat(clipped, "...");
     }
     else
     {
-        std::strncpy(clipped, text, max_chars);
-        clipped[max_chars] = '\0';
+        const size_t keep_bytes = text_renderer_.clipTextToWidth(text, w);
+        std::memcpy(clipped, text, std::min(keep_bytes, sizeof(clipped) - 1));
+        clipped[std::min(keep_bytes, sizeof(clipped) - 1)] = '\0';
     }
-    display_.drawText(x, y, clipped, size, inverse);
+    text_renderer_.drawText(display_, x, y, clipped, inverse);
 }
 
 bool Runtime::editUsesHexCharset() const

@@ -2,6 +2,7 @@
  * Size: 16 px
  * Bpp: 2
  * Opts:
+ * Platform: ESP-only asset. Keep this font out of NRF/shared source lists.
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

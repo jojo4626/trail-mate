@@ -11,7 +11,16 @@ namespace
 
 constexpr unsigned long kBaudRate = 115200UL;
 
-void writeToUart(const char* text)
+void writeToUsbSerial(const char* text)
+{
+    if (!text)
+    {
+        return;
+    }
+    Serial.print(text);
+}
+
+void writeToJlinkSerial(const char* text)
 {
     if (!text)
     {
@@ -24,24 +33,28 @@ void writeToUart(const char* text)
 
 void begin()
 {
+    Serial.begin(kBaudRate);
     Serial2.begin(kBaudRate);
-    delay(40);
+    delay(80);
 }
 
 void print(const char* text)
 {
-    writeToUart(text);
+    writeToUsbSerial(text);
+    writeToJlinkSerial(text);
 }
 
 void println()
 {
+    Serial.println();
     Serial2.println();
 }
 
 void println(const char* text)
 {
-    writeToUart(text);
-    Serial2.println();
+    writeToUsbSerial(text);
+    writeToJlinkSerial(text);
+    println();
 }
 
 void printf(const char* format, ...)

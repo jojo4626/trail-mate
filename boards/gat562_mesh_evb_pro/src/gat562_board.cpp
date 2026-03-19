@@ -614,14 +614,6 @@ class Ssd1306MonoDisplay final : public ::ui::mono_128x64::MonoDisplay
     bool begin() override;
     int width() const override { return SCREEN_WIDTH; }
     int height() const override { return SCREEN_HEIGHT; }
-    int charWidth(::ui::mono_128x64::FontSize size) const override
-    {
-        return size == ::ui::mono_128x64::FontSize::Large ? 12 : 6;
-    }
-    int lineHeight(::ui::mono_128x64::FontSize size) const override
-    {
-        return size == ::ui::mono_128x64::FontSize::Large ? 16 : 8;
-    }
     void clear() override
     {
         if (online_)
@@ -629,18 +621,12 @@ class Ssd1306MonoDisplay final : public ::ui::mono_128x64::MonoDisplay
             display_.clearDisplay();
         }
     }
-    void drawText(int x, int y, const char* text, ::ui::mono_128x64::FontSize size, bool inverse = false) override
+    void drawPixel(int x, int y, bool on) override
     {
-        if (!online_ || !text)
+        if (online_)
         {
-            return;
+            display_.drawPixel(x, y, on ? SSD1306_WHITE : SSD1306_BLACK);
         }
-        display_.setTextSize(size == ::ui::mono_128x64::FontSize::Large ? 2 : 1);
-        display_.setTextColor(inverse ? SSD1306_BLACK : SSD1306_WHITE,
-                              inverse ? SSD1306_WHITE : SSD1306_BLACK);
-        display_.setCursor(x, y);
-        display_.print(text);
-        display_.setTextColor(SSD1306_WHITE, SSD1306_BLACK);
     }
     void drawHLine(int x, int y, int w) override
     {
@@ -696,6 +682,9 @@ bool Ssd1306MonoDisplay::begin()
     {
         display_.clearDisplay();
         display_.setTextWrap(false);
+        // Mono UI text is rendered by ui::mono_128x64::TextRenderer. Keep the
+        // panel implementation at raw-pixel level so NRF never falls back to
+        // Adafruit_GFX's built-in ASCII font path.
         display_.display();
     }
     return online_;

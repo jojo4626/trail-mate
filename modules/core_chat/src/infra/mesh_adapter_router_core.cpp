@@ -2,6 +2,24 @@
 
 namespace chat
 {
+namespace
+{
+
+std::unique_ptr<IMeshAdapter>& backendSlot(MeshProtocol protocol,
+                                           std::unique_ptr<IMeshAdapter>& meshtastic_backend,
+                                           std::unique_ptr<IMeshAdapter>& meshcore_backend)
+{
+    return protocol == MeshProtocol::MeshCore ? meshcore_backend : meshtastic_backend;
+}
+
+const std::unique_ptr<IMeshAdapter>& backendSlotConst(MeshProtocol protocol,
+                                                      const std::unique_ptr<IMeshAdapter>& meshtastic_backend,
+                                                      const std::unique_ptr<IMeshAdapter>& meshcore_backend)
+{
+    return protocol == MeshProtocol::MeshCore ? meshcore_backend : meshtastic_backend;
+}
+
+} // namespace
 
 bool MeshAdapterRouterCore::installBackend(MeshProtocol protocol, std::unique_ptr<IMeshAdapter> backend)
 {
@@ -9,53 +27,53 @@ bool MeshAdapterRouterCore::installBackend(MeshProtocol protocol, std::unique_pt
     {
         return false;
     }
-    backend_ = std::move(backend);
-    backend_protocol_ = protocol;
+
+    backendSlot(protocol, meshtastic_backend_, meshcore_backend_) = std::move(backend);
     return true;
+}
+
+void MeshAdapterRouterCore::setActiveProtocol(MeshProtocol protocol)
+{
+    active_protocol_ = protocol;
 }
 
 bool MeshAdapterRouterCore::hasBackend() const
 {
-    return static_cast<bool>(backend_);
+    return activeBackend() != nullptr;
 }
 
 MeshProtocol MeshAdapterRouterCore::backendProtocol() const
 {
-    return backend_protocol_;
+    return active_protocol_;
 }
 
 IMeshAdapter* MeshAdapterRouterCore::backendForProtocol(MeshProtocol protocol)
 {
-    if (!backend_ || backend_protocol_ != protocol)
-    {
-        return nullptr;
-    }
-    return backend_.get();
+    return backendSlot(protocol, meshtastic_backend_, meshcore_backend_).get();
 }
 
 const IMeshAdapter* MeshAdapterRouterCore::backendForProtocol(MeshProtocol protocol) const
 {
-    if (!backend_ || backend_protocol_ != protocol)
-    {
-        return nullptr;
-    }
-    return backend_.get();
+    return backendSlotConst(protocol, meshtastic_backend_, meshcore_backend_).get();
 }
 
 MeshCapabilities MeshAdapterRouterCore::getCapabilities() const
 {
-    return backend_ ? backend_->getCapabilities() : MeshCapabilities{};
+    const IMeshAdapter* backend = activeBackend();
+    return backend ? backend->getCapabilities() : MeshCapabilities{};
 }
 
 bool MeshAdapterRouterCore::sendText(ChannelId channel, const std::string& text,
                                      MessageId* out_msg_id, NodeId peer)
 {
-    return backend_ && backend_->sendText(channel, text, out_msg_id, peer);
+    IMeshAdapter* backend = activeBackend();
+    return backend && backend->sendText(channel, text, out_msg_id, peer);
 }
 
 bool MeshAdapterRouterCore::pollIncomingText(MeshIncomingText* out)
 {
-    return backend_ && backend_->pollIncomingText(out);
+    IMeshAdapter* backend = activeBackend();
+    return backend && backend->pollIncomingText(out);
 }
 
 bool MeshAdapterRouterCore::sendAppData(ChannelId channel, uint32_t portnum,
@@ -64,114 +82,142 @@ bool MeshAdapterRouterCore::sendAppData(ChannelId channel, uint32_t portnum,
                                         MessageId packet_id,
                                         bool want_response)
 {
-    return backend_ && backend_->sendAppData(channel, portnum, payload, len, dest, want_ack,
-                                             packet_id, want_response);
+    IMeshAdapter* backend = activeBackend();
+    return backend && backend->sendAppData(channel, portnum, payload, len, dest, want_ack,
+                                           packet_id, want_response);
 }
 
 bool MeshAdapterRouterCore::pollIncomingData(MeshIncomingData* out)
 {
-    return backend_ && backend_->pollIncomingData(out);
+    IMeshAdapter* backend = activeBackend();
+    return backend && backend->pollIncomingData(out);
 }
 
 bool MeshAdapterRouterCore::requestNodeInfo(NodeId dest, bool want_response)
 {
-    return backend_ && backend_->requestNodeInfo(dest, want_response);
+    IMeshAdapter* backend = activeBackend();
+    return backend && backend->requestNodeInfo(dest, want_response);
 }
 
 bool MeshAdapterRouterCore::startKeyVerification(NodeId dest)
 {
-    return backend_ && backend_->startKeyVerification(dest);
+    IMeshAdapter* backend = activeBackend();
+    return backend && backend->startKeyVerification(dest);
 }
 
 bool MeshAdapterRouterCore::submitKeyVerificationNumber(NodeId dest, uint64_t nonce, uint32_t number)
 {
-    return backend_ && backend_->submitKeyVerificationNumber(dest, nonce, number);
+    IMeshAdapter* backend = activeBackend();
+    return backend && backend->submitKeyVerificationNumber(dest, nonce, number);
 }
 
 NodeId MeshAdapterRouterCore::getNodeId() const
 {
-    return backend_ ? backend_->getNodeId() : 0;
+    const IMeshAdapter* backend = activeBackend();
+    return backend ? backend->getNodeId() : 0;
 }
 
 bool MeshAdapterRouterCore::isPkiReady() const
 {
-    return backend_ && backend_->isPkiReady();
+    const IMeshAdapter* backend = activeBackend();
+    return backend && backend->isPkiReady();
 }
 
 bool MeshAdapterRouterCore::hasPkiKey(NodeId dest) const
 {
-    return backend_ && backend_->hasPkiKey(dest);
+    const IMeshAdapter* backend = activeBackend();
+    return backend && backend->hasPkiKey(dest);
 }
 
 bool MeshAdapterRouterCore::triggerDiscoveryAction(MeshDiscoveryAction action)
 {
-    return backend_ && backend_->triggerDiscoveryAction(action);
+    IMeshAdapter* backend = activeBackend();
+    return backend && backend->triggerDiscoveryAction(action);
 }
 
 void MeshAdapterRouterCore::applyConfig(const MeshConfig& config)
 {
-    if (backend_)
+    IMeshAdapter* backend = activeBackend();
+    if (backend)
     {
-        backend_->applyConfig(config);
+        backend->applyConfig(config);
     }
 }
 
 void MeshAdapterRouterCore::setUserInfo(const char* long_name, const char* short_name)
 {
-    if (backend_)
+    IMeshAdapter* backend = activeBackend();
+    if (backend)
     {
-        backend_->setUserInfo(long_name, short_name);
+        backend->setUserInfo(long_name, short_name);
     }
 }
 
 void MeshAdapterRouterCore::setNetworkLimits(bool duty_cycle_enabled, uint8_t util_percent)
 {
-    if (backend_)
+    IMeshAdapter* backend = activeBackend();
+    if (backend)
     {
-        backend_->setNetworkLimits(duty_cycle_enabled, util_percent);
+        backend->setNetworkLimits(duty_cycle_enabled, util_percent);
     }
 }
 
 void MeshAdapterRouterCore::setPrivacyConfig(uint8_t encrypt_mode, bool pki_enabled)
 {
-    if (backend_)
+    IMeshAdapter* backend = activeBackend();
+    if (backend)
     {
-        backend_->setPrivacyConfig(encrypt_mode, pki_enabled);
+        backend->setPrivacyConfig(encrypt_mode, pki_enabled);
     }
 }
 
 bool MeshAdapterRouterCore::isReady() const
 {
-    return backend_ && backend_->isReady();
+    const IMeshAdapter* backend = activeBackend();
+    return backend && backend->isReady();
 }
 
 bool MeshAdapterRouterCore::pollIncomingRawPacket(uint8_t* out_data, size_t& out_len, size_t max_len)
 {
-    return backend_ && backend_->pollIncomingRawPacket(out_data, out_len, max_len);
+    IMeshAdapter* backend = activeBackend();
+    return backend && backend->pollIncomingRawPacket(out_data, out_len, max_len);
 }
 
 void MeshAdapterRouterCore::handleRawPacket(const uint8_t* data, size_t size)
 {
-    if (backend_)
+    IMeshAdapter* backend = activeBackend();
+    if (backend)
     {
-        backend_->handleRawPacket(data, size);
+        backend->handleRawPacket(data, size);
     }
 }
 
 void MeshAdapterRouterCore::setLastRxStats(float rssi, float snr)
 {
-    if (backend_)
+    IMeshAdapter* backend = activeBackend();
+    if (backend)
     {
-        backend_->setLastRxStats(rssi, snr);
+        backend->setLastRxStats(rssi, snr);
     }
 }
 
 void MeshAdapterRouterCore::processSendQueue()
 {
-    if (backend_)
+    IMeshAdapter* backend = activeBackend();
+    if (backend)
     {
-        backend_->processSendQueue();
+        backend->processSendQueue();
     }
+}
+
+IMeshAdapter* MeshAdapterRouterCore::activeBackend()
+{
+    return backendForProtocol(active_protocol_);
+}
+
+const IMeshAdapter* MeshAdapterRouterCore::activeBackend() const
+{
+    return backendForProtocol(active_protocol_);
 }
 
 } // namespace chat

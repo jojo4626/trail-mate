@@ -50,6 +50,11 @@ void copyString(const char* src, T* dst, size_t dst_len)
     dst[copy_len] = '\0';
 }
 
+const char* protocolLabel(chat::MeshProtocol protocol)
+{
+    return protocol == chat::MeshProtocol::MeshCore ? "MC" : "MT";
+}
+
 } // namespace
 
 AppFacadeRuntime& AppFacadeRuntime::instance()
@@ -243,6 +248,11 @@ void AppFacadeRuntime::applyMeshConfig()
     ::boards::gat562_mesh_evb_pro::settings_store::normalizeConfig(config_);
     if (mesh_router_)
     {
+        auto* router = static_cast<chat::MeshAdapterRouterCore*>(mesh_router_.get());
+        router->setActiveProtocol(config_.mesh_protocol);
+    }
+    if (mesh_router_)
+    {
         mesh_router_->applyConfig(config_.activeMeshConfig());
     }
     if (board_)
@@ -257,6 +267,15 @@ void AppFacadeRuntime::applyMeshConfig()
     {
         ble_manager_->applyProtocol(config_.mesh_protocol);
     }
+
+    const chat::MeshConfig& mesh = config_.activeMeshConfig();
+    debug_console::printf("[gat562] radio cfg %s region=%u preset=%u ch=%u tx=%d hop=%u\n",
+                          protocolLabel(config_.mesh_protocol),
+                          static_cast<unsigned>(mesh.region),
+                          static_cast<unsigned>(mesh.modem_preset),
+                          static_cast<unsigned>(mesh.channel_num),
+                          static_cast<int>(mesh.tx_power),
+                          static_cast<unsigned>(mesh.hop_limit));
 }
 
 void AppFacadeRuntime::applyUserInfo()
