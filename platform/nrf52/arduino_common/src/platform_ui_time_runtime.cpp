@@ -12,22 +12,20 @@ namespace
 constexpr const char* kSettingsNs = "settings";
 constexpr const char* kTimezoneKey = "timezone_offset";
 
-int& timezoneOffsetStorage()
+int stored_timezone_offset_min()
 {
-    static int s_offset_min = ::platform::ui::settings_store::get_int(kSettingsNs, kTimezoneKey, 0);
-    return s_offset_min;
+    return ::platform::ui::settings_store::get_int(kSettingsNs, kTimezoneKey, 0);
 }
 
 } // namespace
 
 int timezone_offset_min()
 {
-    return timezoneOffsetStorage();
+    return stored_timezone_offset_min();
 }
 
 void set_timezone_offset_min(int offset_min)
 {
-    timezoneOffsetStorage() = offset_min;
     ::platform::ui::settings_store::put_int(kSettingsNs, kTimezoneKey, offset_min);
 }
 

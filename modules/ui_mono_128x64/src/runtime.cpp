@@ -8,7 +8,6 @@
 #include "chat/runtime/self_identity_policy.h"
 #include "chat/usecase/chat_service.h"
 #include "chat/usecase/contact_service.h"
-
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -135,6 +134,7 @@ constexpr size_t kNodeInfoPageSize = 6;
 constexpr size_t kInfoPageSize = 6;
 constexpr size_t kGnssSummaryPageSize = 6;
 constexpr size_t kGnssSatPageSize = 5;
+constexpr uint32_t kGnssSnapshotRefreshMs = 5000;
 constexpr int kTimezoneMin = -12 * 60;
 constexpr int kTimezoneMax = 14 * 60;
 constexpr int kTimezoneStep = 60;
@@ -1701,6 +1701,29 @@ void Runtime::renderBootLog()
     }
 }
 
+void Runtime::refreshGnssSnapshot(bool force)
+{
+    const uint32_t now = nowMs();
+    const bool stale = !gnss_snapshot_valid_ ||
+                       now < gnss_snapshot_updated_ms_ ||
+                       (now - gnss_snapshot_updated_ms_) >= kGnssSnapshotRefreshMs;
+    if (!force && !stale)
+    {
+        return;
+    }
+
+    gnss_snapshot_state_ = host_.gps_data_fn ? host_.gps_data_fn() : platform::ui::gps::GpsState{};
+    gnss_snapshot_status_ = platform::ui::gps::GnssStatus{};
+    gnss_snapshot_count_ = 0;
+    gnss_snapshot_sats_.fill(platform::ui::gps::GnssSatInfo{});
+    (void)platform::ui::gps::get_gnss_snapshot(gnss_snapshot_sats_.data(),
+                                               gnss_snapshot_sats_.size(),
+                                               &gnss_snapshot_count_,
+                                               &gnss_snapshot_status_);
+    gnss_snapshot_updated_ms_ = now;
+    gnss_snapshot_valid_ = true;
+}
+
 void Runtime::renderScreensaver()
 {
     char protocol[8] = {};
@@ -1731,8 +1754,10 @@ void Runtime::renderScreensaver()
                                   sizeof(freq));
     }
 
+    refreshGnssSnapshot();
     const auto battery = host_.battery_info_fn ? host_.battery_info_fn() : platform::ui::device::BatteryInfo{};
-    const auto gps = host_.gps_data_fn ? host_.gps_data_fn() : platform::ui::gps::GpsState{};
+    const auto& gps = gnss_snapshot_state_;
+    const auto& gnss_status = gnss_snapshot_status_;
     const int unread = app() ? app()->getChatService().getTotalUnread() : 0;
     const bool gps_enabled = host_.gps_enabled_fn && host_.gps_enabled_fn();
     const bool ble_enabled = app() && app()->isBleEnabled();
@@ -1745,9 +1770,14 @@ void Runtime::renderScreensaver()
     {
         std::snprintf(bat_pct_buf, sizeof(bat_pct_buf), "BAT:--");
     }
-    if (gps.satellites > 0)
+    const unsigned satellite_count = gnss_status.sats_in_view > 0
+                                         ? static_cast<unsigned>(gnss_status.sats_in_view)
+                                         : (gnss_snapshot_count_ > 0
+                                                ? static_cast<unsigned>(gnss_snapshot_count_)
+                                                : static_cast<unsigned>(gps.satellites));
+    if (satellite_count > 0)
     {
-        std::snprintf(sat_buf, sizeof(sat_buf), "SAT %u", static_cast<unsigned>(gps.satellites));
+        std::snprintf(sat_buf, sizeof(sat_buf), "SAT %u", satellite_count);
     }
     else if (gps_enabled)
     {
@@ -2386,16 +2416,16 @@ void Runtime::renderSettingPopup()
     formatSettingPopupValue(value, sizeof(value));
 
     constexpr int kBoxX = 8;
-    constexpr int kBoxY = 18;
+    constexpr int kBoxY = 14;
     constexpr int kBoxW = 112;
-    constexpr int kBoxH = 28;
+    constexpr int kBoxH = 36;
     display_.fillRect(kBoxX, kBoxY, kBoxW, kBoxH, false);
     drawFrame(display_, kBoxX, kBoxY, kBoxW, kBoxH);
     const int title_w = text_renderer_.measureTextWidth(title);
     text_renderer_.drawText(display_, kBoxX + std::max(2, (kBoxW - title_w) / 2), kBoxY + 3, title);
     const int value_w = text_renderer_.measureTextWidth(value);
-    text_renderer_.drawText(display_, kBoxX + std::max(2, (kBoxW - value_w) / 2), kBoxY + 13, value);
-    drawTextClipped(kBoxX + 2, kBoxY + 21, kBoxW - 4, "ADJ ARROWS SEL OK BACK ESC");
+    text_renderer_.drawText(display_, kBoxX + std::max(2, (kBoxW - value_w) / 2), kBoxY + 14, value);
+    drawTextClipped(kBoxX + 2, kBoxY + 25, kBoxW - 4, "ADJ ARROWS SEL OK BACK ESC");
 }
 
 void Runtime::renderInfoPage()
@@ -2587,11 +2617,11 @@ void Runtime::renderInfoPage()
 
 void Runtime::renderGnssPage()
 {
-    const auto state = host_.gps_data_fn ? host_.gps_data_fn() : platform::ui::gps::GpsState{};
-    platform::ui::gps::GnssStatus status{};
-    std::size_t sat_count = 0;
-    platform::ui::gps::GnssSatInfo sats[::gps::kMaxGnssSats] = {};
-    (void)platform::ui::gps::get_gnss_snapshot(sats, ::gps::kMaxGnssSats, &sat_count, &status);
+    refreshGnssSnapshot();
+    const auto& state = gnss_snapshot_state_;
+    const auto& status = gnss_snapshot_status_;
+    const std::size_t sat_count = gnss_snapshot_count_;
+    const auto* sats = gnss_snapshot_sats_.data();
     char summary_lines[14][40] = {};
     size_t summary_count = 0;
 
@@ -2706,7 +2736,7 @@ void Runtime::renderGnssPage()
     const size_t sat_visible = std::min(kGnssSatPageSize, sat_count - std::min(sat_start, sat_count));
     if (sat_visible == 0)
     {
-        text_renderer_.drawText(display_, 0, 22, "NO SAT DATA");
+        text_renderer_.drawText(display_, 0, 22, "NO SATELLITE DATA");
         return;
     }
 
@@ -2736,6 +2766,10 @@ void Runtime::enterPage(Page page)
 {
     page_ = page;
     page_entered_ms_ = nowMs();
+    if (page == Page::Screensaver || page == Page::GnssPage)
+    {
+        refreshGnssSnapshot(true);
+    }
     if (page == Page::ChatList)
     {
         rebuildConversationList();

@@ -13,7 +13,10 @@
 #include <time.h>
 
 #include <algorithm>
+#include <array>
+#include <cstdlib>
 #include <cmath>
+#include <cstring>
 #include <cstdio>
 #include <limits>
 
@@ -67,6 +70,11 @@ struct GpsRuntimeState
     TinyGPSPlus parser{};
     ::gps::GpsState data{};
     ::gps::GnssStatus status{};
+    struct GsvCollector
+    {
+        std::array<::gps::GnssSatInfo, ::gps::kMaxGnssSats> sats{};
+        std::size_t count = 0;
+    };
     uint32_t last_motion_ms = 0;
     uint32_t collection_interval_ms = 60000;
     uint32_t motion_idle_timeout_ms = 0;
@@ -82,6 +90,13 @@ struct GpsRuntimeState
     uint32_t last_time_sync_log_ms = 0;
     uint32_t last_time_sync_epoch_logged = 0;
     uint32_t last_status_log_ms = 0;
+    std::array<GsvCollector, 5> gsv{};
+    std::array<::gps::GnssSatInfo, ::gps::kMaxGnssSats> sats{};
+    std::array<uint16_t, ::gps::kMaxGnssSats> used_sat_ids{};
+    char nmea_line[96] = {};
+    std::size_t sat_count = 0;
+    std::size_t used_sat_count = 0;
+    std::size_t nmea_line_len = 0;
     bool enabled = true;
     bool powered = false;
     bool initialized = false;
@@ -90,6 +105,16 @@ struct GpsRuntimeState
 } s_gps;
 
 constexpr uint32_t kMinValidEpochSeconds = 1700000000UL;
+constexpr std::size_t kNmeaFieldMax = 24;
+
+enum class CollectorSlot : uint8_t
+{
+    GPS = 0,
+    GLN = 1,
+    GAL = 2,
+    BD = 3,
+    UNKNOWN = 4,
+};
 
 uint32_t readSystemEpochSeconds()
 {
@@ -104,6 +129,327 @@ uint32_t readSystemEpochSeconds()
 void syncSystemClockFromEpoch(uint32_t epoch_s)
 {
     (void)epoch_s;
+}
+
+CollectorSlot collectorSlotForTalker(const char* talker)
+{
+    if (!talker || talker[0] == '\0' || talker[1] == '\0')
+    {
+        return CollectorSlot::UNKNOWN;
+    }
+    if (talker[0] == 'G' && talker[1] == 'P')
+    {
+        return CollectorSlot::GPS;
+    }
+    if (talker[0] == 'G' && talker[1] == 'L')
+    {
+        return CollectorSlot::GLN;
+    }
+    if (talker[0] == 'G' && talker[1] == 'A')
+    {
+        return CollectorSlot::GAL;
+    }
+    if ((talker[0] == 'G' && talker[1] == 'B') || (talker[0] == 'B' && talker[1] == 'D'))
+    {
+        return CollectorSlot::BD;
+    }
+    return CollectorSlot::UNKNOWN;
+}
+
+::gps::GnssSystem systemForSlot(CollectorSlot slot)
+{
+    switch (slot)
+    {
+    case CollectorSlot::GPS:
+        return ::gps::GnssSystem::GPS;
+    case CollectorSlot::GLN:
+        return ::gps::GnssSystem::GLN;
+    case CollectorSlot::GAL:
+        return ::gps::GnssSystem::GAL;
+    case CollectorSlot::BD:
+        return ::gps::GnssSystem::BD;
+    default:
+        return ::gps::GnssSystem::UNKNOWN;
+    }
+}
+
+bool parseUint(const char* text, uint32_t* out)
+{
+    if (!text || !*text || !out)
+    {
+        return false;
+    }
+    char* end = nullptr;
+    unsigned long value = std::strtoul(text, &end, 10);
+    if (end == text)
+    {
+        return false;
+    }
+    *out = static_cast<uint32_t>(value);
+    return true;
+}
+
+bool parseInt(const char* text, int* out)
+{
+    if (!text || !*text || !out)
+    {
+        return false;
+    }
+    char* end = nullptr;
+    long value = std::strtol(text, &end, 10);
+    if (end == text)
+    {
+        return false;
+    }
+    *out = static_cast<int>(value);
+    return true;
+}
+
+bool verifyChecksum(const char* line)
+{
+    if (!line || line[0] != '$')
+    {
+        return false;
+    }
+
+    const char* star = std::strchr(line, '*');
+    if (!star || !star[1] || !star[2])
+    {
+        return true;
+    }
+
+    uint8_t checksum = 0;
+    for (const char* cursor = line + 1; cursor < star; ++cursor)
+    {
+        checksum ^= static_cast<uint8_t>(*cursor);
+    }
+
+    char checksum_text[3] = {star[1], star[2], '\0'};
+    char* end = nullptr;
+    long expected = std::strtol(checksum_text, &end, 16);
+    return end != checksum_text && checksum == static_cast<uint8_t>(expected & 0xFF);
+}
+
+std::size_t splitFields(char* sentence, std::array<char*, kNmeaFieldMax>& fields)
+{
+    fields.fill(nullptr);
+    std::size_t count = 0;
+    char* cursor = sentence;
+    while (cursor && *cursor && count < fields.size())
+    {
+        fields[count++] = cursor;
+        char* comma = std::strchr(cursor, ',');
+        if (!comma)
+        {
+            break;
+        }
+        *comma = '\0';
+        cursor = comma + 1;
+    }
+    return count;
+}
+
+bool usedSat(uint16_t sat_id)
+{
+    for (std::size_t i = 0; i < s_gps.used_sat_count; ++i)
+    {
+        if (s_gps.used_sat_ids[i] == sat_id)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void mergeGnssSatellites()
+{
+    s_gps.sat_count = 0;
+    for (std::size_t collector_index = 0; collector_index < s_gps.gsv.size(); ++collector_index)
+    {
+        auto& collector = s_gps.gsv[collector_index];
+        for (std::size_t sat_index = 0;
+             sat_index < collector.count && s_gps.sat_count < s_gps.sats.size();
+             ++sat_index)
+        {
+            auto sat = collector.sats[sat_index];
+            sat.used = usedSat(sat.id);
+            s_gps.sats[s_gps.sat_count++] = sat;
+        }
+    }
+
+    s_gps.status.sats_in_view = static_cast<uint8_t>(std::min<std::size_t>(s_gps.sat_count, 255U));
+    if (s_gps.used_sat_count > 0)
+    {
+        s_gps.status.sats_in_use = static_cast<uint8_t>(std::min<std::size_t>(s_gps.used_sat_count, 255U));
+    }
+}
+
+void clearGpsObservations()
+{
+    s_gps.parser = TinyGPSPlus{};
+    s_gps.data = ::gps::GpsState{};
+    s_gps.status = ::gps::GnssStatus{};
+    s_gps.sats.fill(::gps::GnssSatInfo{});
+    s_gps.used_sat_ids.fill(0);
+    s_gps.gsv.fill(GpsRuntimeState::GsvCollector{});
+    s_gps.sat_count = 0;
+    s_gps.used_sat_count = 0;
+    s_gps.last_nmea_ms = 0;
+    s_gps.nmea_line_len = 0;
+    s_gps.nmea_line[0] = '\0';
+    s_gps.nmea_seen = false;
+}
+
+void parseGsaSentence(const std::array<char*, kNmeaFieldMax>& fields, std::size_t count)
+{
+    if (count < 4)
+    {
+        return;
+    }
+
+    s_gps.used_sat_count = 0;
+    for (std::size_t i = 3; i <= 14 && i < count; ++i)
+    {
+        uint32_t sat_id = 0;
+        if (!parseUint(fields[i], &sat_id) || sat_id == 0 || s_gps.used_sat_count >= s_gps.used_sat_ids.size())
+        {
+            continue;
+        }
+        s_gps.used_sat_ids[s_gps.used_sat_count++] = static_cast<uint16_t>(sat_id);
+    }
+    mergeGnssSatellites();
+}
+
+void parseGsvSentence(const char* talker, const std::array<char*, kNmeaFieldMax>& fields, std::size_t count)
+{
+    if (count < 4)
+    {
+        return;
+    }
+
+    const CollectorSlot slot = collectorSlotForTalker(talker);
+    auto& collector = s_gps.gsv[static_cast<std::size_t>(slot)];
+
+    uint32_t msg_num = 0;
+    if (!parseUint(fields[2], &msg_num))
+    {
+        return;
+    }
+
+    uint32_t sats_in_view = 0;
+    if (parseUint(fields[3], &sats_in_view))
+    {
+        s_gps.status.sats_in_view = static_cast<uint8_t>(std::min<uint32_t>(sats_in_view, 255U));
+    }
+
+    if (msg_num == 1)
+    {
+        collector.count = 0;
+    }
+
+    for (std::size_t base = 4; base + 3 < count && collector.count < collector.sats.size(); base += 4)
+    {
+        uint32_t sat_id = 0;
+        if (!parseUint(fields[base], &sat_id) || sat_id == 0)
+        {
+            continue;
+        }
+
+        ::gps::GnssSatInfo sat{};
+        sat.id = static_cast<uint16_t>(sat_id);
+        sat.sys = systemForSlot(slot);
+
+        uint32_t elevation = 0;
+        if (parseUint(fields[base + 1], &elevation))
+        {
+            sat.elevation = static_cast<uint8_t>(std::min<uint32_t>(elevation, 90U));
+        }
+
+        uint32_t azimuth = 0;
+        if (parseUint(fields[base + 2], &azimuth))
+        {
+            sat.azimuth = static_cast<uint16_t>(std::min<uint32_t>(azimuth, 359U));
+        }
+
+        int snr = -1;
+        if (parseInt(fields[base + 3], &snr))
+        {
+            sat.snr = static_cast<int8_t>(std::clamp(snr, -1, 99));
+        }
+
+        collector.sats[collector.count++] = sat;
+    }
+
+    mergeGnssSatellites();
+}
+
+void parseNmeaSentence(char* sentence)
+{
+    if (!sentence || sentence[0] != '$' || !verifyChecksum(sentence))
+    {
+        return;
+    }
+
+    char* payload = sentence + 1;
+    char* star = std::strchr(payload, '*');
+    if (star)
+    {
+        *star = '\0';
+    }
+
+    std::array<char*, kNmeaFieldMax> fields{};
+    const std::size_t count = splitFields(payload, fields);
+    if (count == 0 || !fields[0] || std::strlen(fields[0]) < 5)
+    {
+        return;
+    }
+
+    char talker[3] = {fields[0][0], fields[0][1], '\0'};
+    const char* type = fields[0] + std::strlen(fields[0]) - 3;
+
+    if (std::strcmp(type, "GSA") == 0)
+    {
+        parseGsaSentence(fields, count);
+    }
+    else if (std::strcmp(type, "GSV") == 0)
+    {
+        parseGsvSentence(talker, fields, count);
+    }
+}
+
+void processGpsNmeaChar(char ch)
+{
+    if (ch == '$')
+    {
+        s_gps.nmea_line_len = 0;
+        s_gps.nmea_line[s_gps.nmea_line_len++] = ch;
+        return;
+    }
+
+    if (s_gps.nmea_line_len == 0)
+    {
+        return;
+    }
+
+    if (ch == '\r' || ch == '\n')
+    {
+        if (s_gps.nmea_line_len > 0)
+        {
+            s_gps.nmea_line[s_gps.nmea_line_len] = '\0';
+            parseNmeaSentence(s_gps.nmea_line);
+            s_gps.nmea_line_len = 0;
+        }
+        return;
+    }
+
+    if (s_gps.nmea_line_len + 1 < sizeof(s_gps.nmea_line))
+    {
+        s_gps.nmea_line[s_gps.nmea_line_len++] = ch;
+    }
+    else
+    {
+        s_gps.nmea_line_len = 0;
+    }
 }
 
 uint8_t daysInMonth(int year, uint8_t month)
@@ -363,8 +709,12 @@ void refreshGpsFix()
                          ? static_cast<uint32_t>(s_gps.parser.location.age())
                          : 0xFFFFFFFFUL;
 
-    s_gps.status.sats_in_use = s_gps.data.satellites;
-    s_gps.status.sats_in_view = s_gps.data.satellites;
+    s_gps.status.sats_in_use = s_gps.used_sat_count > 0
+                                   ? static_cast<uint8_t>(std::min<std::size_t>(s_gps.used_sat_count, 255U))
+                                   : s_gps.data.satellites;
+    s_gps.status.sats_in_view = s_gps.sat_count > 0
+                                    ? static_cast<uint8_t>(std::min<std::size_t>(s_gps.sat_count, 255U))
+                                    : s_gps.data.satellites;
     s_gps.status.hdop = s_gps.parser.hdop.isValid()
                             ? static_cast<float>(s_gps.parser.hdop.hdop())
                             : 0.0f;
@@ -957,7 +1307,11 @@ void Gat562Board::applyGpsConfig(const app::AppConfig& config)
     s_gps.nmea_sentence_mask = config.privacy_nmea_sentence;
     s_gps.motion_idle_timeout_ms = config.motion_config.idle_timeout_ms;
     s_gps.motion_sensor_id = config.motion_config.sensor_id;
-    s_gps.enabled = true;
+    s_gps.enabled = (config.gps_mode != 0);
+    if (!s_gps.enabled)
+    {
+        clearGpsObservations();
+    }
     Serial.printf(
         "[gat562][gps] config enabled=%u interval_ms=%lu strategy=%u mode=%u sat_mask=0x%02X nmea_hz=%u nmea_mask=0x%02X motion_idle_ms=%lu motion_sensor=%u\n",
         static_cast<unsigned>(s_gps.enabled ? 1 : 0),
@@ -982,7 +1336,9 @@ void Gat562Board::tickGps()
     {
         s_gps.nmea_seen = true;
         s_gps.last_nmea_ms = millis();
-        s_gps.parser.encode(static_cast<char>(Serial1.read()));
+        const char ch = static_cast<char>(Serial1.read());
+        s_gps.parser.encode(ch);
+        processGpsNmeaChar(ch);
     }
     applyGpsTimeIfValid();
     refreshGpsFix();
@@ -1027,19 +1383,20 @@ bool Gat562Board::gpsGnssSnapshot(::gps::GnssSatInfo* out,
     {
         *status = s_gps.status;
     }
-    if (out && max > 0 && s_gps.data.satellites > 0)
+    if (out && max > 0 && s_gps.sat_count > 0)
     {
-        out[0].id = 0;
-        out[0].sys = ::gps::GnssSystem::GPS;
-        out[0].snr = -1;
-        out[0].used = s_gps.data.valid;
+        const std::size_t copy_count = std::min<std::size_t>(max, s_gps.sat_count);
+        for (std::size_t index = 0; index < copy_count; ++index)
+        {
+            out[index] = s_gps.sats[index];
+        }
         if (out_count)
         {
-            *out_count = 1;
+            *out_count = copy_count;
         }
         return true;
     }
-    return s_gps.data.valid || s_gps.data.satellites > 0;
+    return s_gps.data.valid || s_gps.data.satellites > 0 || s_gps.sat_count > 0;
 }
 
 void Gat562Board::setGpsCollectionInterval(uint32_t interval_ms) { s_gps.collection_interval_ms = interval_ms; }
@@ -1048,6 +1405,11 @@ void Gat562Board::setGpsConfig(uint8_t mode, uint8_t sat_mask)
 {
     s_gps.gnss_mode = mode;
     s_gps.sat_mask = sat_mask;
+    s_gps.enabled = (mode != 0);
+    if (!s_gps.enabled)
+    {
+        clearGpsObservations();
+    }
 }
 void Gat562Board::setGpsNmeaConfig(uint8_t output_hz, uint8_t sentence_mask)
 {
@@ -1056,8 +1418,20 @@ void Gat562Board::setGpsNmeaConfig(uint8_t output_hz, uint8_t sentence_mask)
 }
 void Gat562Board::setGpsMotionIdleTimeout(uint32_t timeout_ms) { s_gps.motion_idle_timeout_ms = timeout_ms; }
 void Gat562Board::setGpsMotionSensorId(uint8_t sensor_id) { s_gps.motion_sensor_id = sensor_id; }
-void Gat562Board::suspendGps() { s_gps.enabled = false; }
-void Gat562Board::resumeGps() { s_gps.enabled = true; }
+void Gat562Board::suspendGps()
+{
+    s_gps.enabled = false;
+    clearGpsObservations();
+}
+
+void Gat562Board::resumeGps()
+{
+    s_gps.enabled = (s_gps.gnss_mode != 0);
+    if (!s_gps.enabled)
+    {
+        clearGpsObservations();
+    }
+}
 void Gat562Board::setCurrentEpochSeconds(uint32_t epoch_s)
 {
     if (epoch_s < kMinValidEpochSeconds)

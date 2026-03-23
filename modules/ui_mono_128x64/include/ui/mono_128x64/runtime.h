@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
+#include <array>
 
 namespace ui::mono_128x64
 {
@@ -200,6 +201,7 @@ class Runtime : public chat::ChatService::IncomingTextObserver
     void drawMenuList(const char* title, const char* const* items, size_t count, size_t selected);
     void drawFooterHint(const char* hint);
     void drawTextClipped(int x, int y, int w, const char* text, bool inverse = false);
+    void refreshGnssSnapshot(bool force = false);
     bool editUsesHexCharset() const;
     bool usesSmartCompose() const;
 
@@ -303,6 +305,12 @@ class Runtime : public chat::ChatService::IncomingTextObserver
     char compose_candidates_[kComposeCandidateMax][kComposeCandidateWidth] = {};
     size_t compose_candidate_count_ = 0;
     size_t compose_candidate_index_ = 0;
+    platform::ui::gps::GpsState gnss_snapshot_state_{};
+    platform::ui::gps::GnssStatus gnss_snapshot_status_{};
+    std::array<platform::ui::gps::GnssSatInfo, ::gps::kMaxGnssSats> gnss_snapshot_sats_{};
+    size_t gnss_snapshot_count_ = 0;
+    uint32_t gnss_snapshot_updated_ms_ = 0;
+    bool gnss_snapshot_valid_ = false;
 };
 
 } // namespace ui::mono_128x64

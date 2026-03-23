@@ -200,10 +200,15 @@ void ensureLoaded()
     {
         return;
     }
-    loadedFlag() = true;
 
     clearAllStores();
-    if (!ensureFs() || !InternalFS.exists(kSettingsPath))
+    if (!ensureFs())
+    {
+        return;
+    }
+    loadedFlag() = true;
+
+    if (!InternalFS.exists(kSettingsPath))
     {
         return;
     }
@@ -221,18 +226,25 @@ void ensureLoaded()
         return;
     }
 
+    std::map<std::string, int> loaded_ints;
+    std::map<std::string, bool> loaded_bools;
+    std::map<std::string, uint32_t> loaded_uints;
+    std::map<std::string, std::vector<uint8_t>> loaded_blobs;
+
     for (uint32_t i = 0; i < header.record_count; ++i)
     {
         RecordHeader rec{};
         if (!readPod(file, &rec))
         {
-            break;
+            file.close();
+            return;
         }
 
         std::string key(rec.key_len, '\0');
         if (rec.key_len > 0 && file.read(&key[0], rec.key_len) != rec.key_len)
         {
-            break;
+            file.close();
+            return;
         }
 
         switch (static_cast<ValueType>(rec.type))
@@ -242,9 +254,10 @@ void ensureLoaded()
             int32_t value = 0;
             if (rec.value_len != sizeof(value) || !readPod(file, &value))
             {
+                file.close();
                 return;
             }
-            intStore()[key] = value;
+            loaded_ints[key] = value;
             break;
         }
         case ValueType::Bool:
@@ -252,9 +265,10 @@ void ensureLoaded()
             uint8_t value = 0;
             if (rec.value_len != sizeof(value) || !readPod(file, &value))
             {
+                file.close();
                 return;
             }
-            boolStore()[key] = (value != 0);
+            loaded_bools[key] = (value != 0);
             break;
         }
         case ValueType::Uint:
@@ -262,9 +276,10 @@ void ensureLoaded()
             uint32_t value = 0;
             if (rec.value_len != sizeof(value) || !readPod(file, &value))
             {
+                file.close();
                 return;
             }
-            uintStore()[key] = value;
+            loaded_uints[key] = value;
             break;
         }
         case ValueType::Blob:
@@ -272,9 +287,10 @@ void ensureLoaded()
             std::vector<uint8_t> value(rec.value_len, 0);
             if (rec.value_len > 0 && file.read(value.data(), rec.value_len) != rec.value_len)
             {
+                file.close();
                 return;
             }
-            blobStore()[key] = value;
+            loaded_blobs[key] = std::move(value);
             break;
         }
         default:
@@ -282,6 +298,7 @@ void ensureLoaded()
             std::vector<uint8_t> skip(rec.value_len, 0);
             if (rec.value_len > 0 && file.read(skip.data(), rec.value_len) != rec.value_len)
             {
+                file.close();
                 return;
             }
             break;
@@ -290,6 +307,10 @@ void ensureLoaded()
     }
 
     file.close();
+    intStore() = std::move(loaded_ints);
+    boolStore() = std::move(loaded_bools);
+    uintStore() = std::move(loaded_uints);
+    blobStore() = std::move(loaded_blobs);
 }
 
 } // namespace
