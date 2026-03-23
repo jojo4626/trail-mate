@@ -129,6 +129,8 @@ constexpr ComposeGroupDef kComposeAbcGroups[] = {
 constexpr uint32_t kBootMinMs = 1800;
 constexpr uint32_t kSleepTimeoutMs = 30000;
 constexpr uint32_t kComposeMultiTapWindowMs = 700;
+constexpr size_t kChatListPageSize = 6;
+constexpr size_t kNodeListPageSize = 3;
 constexpr size_t kMessageInfoPageSize = 6;
 constexpr size_t kNodeInfoPageSize = 6;
 constexpr size_t kInfoPageSize = 6;
@@ -872,6 +874,24 @@ void formatTimezoneLabel(int offset_min, char* out, size_t out_len)
     {
         std::snprintf(out, out_len, "UTC%+d:%02d", hours, minutes);
     }
+}
+
+void formatUptimeLabel(uint32_t uptime_seconds, char* out, size_t out_len)
+{
+    if (!out || out_len == 0)
+    {
+        return;
+    }
+
+    const uint32_t days = uptime_seconds / 86400U;
+    const uint32_t hours = (uptime_seconds / 3600U) % 24U;
+    const uint32_t minutes = (uptime_seconds / 60U) % 60U;
+    std::snprintf(out,
+                  out_len,
+                  "%lu d %lu h %lu m",
+                  static_cast<unsigned long>(days),
+                  static_cast<unsigned long>(hours),
+                  static_cast<unsigned long>(minutes));
 }
 
 void appendStatus(Runtime* runtime, const char* fmt, ...)
@@ -1858,7 +1878,17 @@ void Runtime::renderMainMenu()
 void Runtime::renderChatList()
 {
     rebuildConversationList();
-    drawTitleBar("CHATS", nullptr);
+    const size_t total_pages = std::max<size_t>(1U, (conversation_count_ + kChatListPageSize - 1U) / kChatListPageSize);
+    const size_t selected = (conversation_count_ > 0)
+                                ? std::min(chat_list_index_, conversation_count_ - 1U)
+                                : 0U;
+    const size_t start = (conversation_count_ > 0) ? ((selected / kChatListPageSize) * kChatListPageSize) : 0U;
+    const size_t current_page = (conversation_count_ > 0) ? ((start / kChatListPageSize) + 1U) : 1U;
+    char pos[16] = {};
+    std::snprintf(pos, sizeof(pos), "%u/%u",
+                  static_cast<unsigned>(current_page),
+                  static_cast<unsigned>(total_pages));
+    drawTitleBar("CHATS", pos);
     if (conversation_count_ == 0)
     {
         text_renderer_.drawText(display_, 0, 18, "NO CONVERSATIONS");
@@ -1866,23 +1896,35 @@ void Runtime::renderChatList()
     }
 
     const int line_h = text_renderer_.lineHeight();
-    for (size_t i = 0; i < conversation_count_ && i < 6; ++i)
+    const size_t visible = std::min(conversation_count_ - start, kChatListPageSize);
+    for (size_t i = 0; i < visible; ++i)
     {
-        const bool selected = (i == chat_list_index_);
+        const size_t conversation_index = start + i;
+        const bool selected_row = (conversation_index == selected);
         char line[32] = {};
-        const auto& conv = conversations_[i];
+        const auto& conv = conversations_[conversation_index];
         std::snprintf(line, sizeof(line), "%s%s",
                       conv.unread > 0 ? "*" : "",
                       conv.name.c_str());
         const int y = 10 + static_cast<int>(i * line_h);
-        drawTextClipped(0, y, display_.width(), line, selected);
+        drawTextClipped(0, y, display_.width(), line, selected_row);
     }
 }
 
 void Runtime::renderNodeList()
 {
     rebuildNodeList();
-    drawTitleBar("NODES", nullptr);
+    const size_t total_pages = std::max<size_t>(1U, (node_count_ + kNodeListPageSize - 1U) / kNodeListPageSize);
+    const size_t selected = (node_count_ > 0)
+                                ? std::min(node_list_index_, node_count_ - 1U)
+                                : 0U;
+    const size_t start = (node_count_ > 0) ? ((selected / kNodeListPageSize) * kNodeListPageSize) : 0U;
+    const size_t current_page = (node_count_ > 0) ? ((start / kNodeListPageSize) + 1U) : 1U;
+    char pos[16] = {};
+    std::snprintf(pos, sizeof(pos), "%u/%u",
+                  static_cast<unsigned>(current_page),
+                  static_cast<unsigned>(total_pages));
+    drawTitleBar("NODES", pos);
     if (node_count_ == 0)
     {
         text_renderer_.drawText(display_, 0, 18, "NO NODES");
@@ -1890,17 +1932,7 @@ void Runtime::renderNodeList()
     }
 
     constexpr size_t kNodeAliasMax = 8;
-    const size_t selected = std::min(node_list_index_, node_count_ - 1U);
-    const size_t visible = std::min(node_count_, static_cast<size_t>(3));
-    size_t start = 0;
-    if (node_count_ > visible)
-    {
-        start = (selected + 1 > visible) ? (selected + 1 - visible) : 0;
-        if (start + visible > node_count_)
-        {
-            start = node_count_ - visible;
-        }
-    }
+    const size_t visible = std::min(node_count_ - start, kNodeListPageSize);
 
     for (size_t i = 0; i < visible; ++i)
     {
@@ -2430,8 +2462,6 @@ void Runtime::renderSettingPopup()
 
 void Runtime::renderInfoPage()
 {
-    drawTitleBar("INFO", nullptr);
-
     char lines[24][40] = {};
     size_t line_count = 0;
     auto push_line = [&](const char* text)
@@ -2545,6 +2575,8 @@ void Runtime::renderInfoPage()
     formatTime(time_buf, sizeof(time_buf), date_buf, sizeof(date_buf));
     push_kv("TIME", time_buf[0] ? time_buf : "-");
     push_kv("DATE", date_buf[0] ? date_buf : "-");
+    formatUptimeLabel(host_.millis_fn ? (host_.millis_fn() / 1000U) : 0U, value, sizeof(value));
+    push_kv("UPTIME", value);
     if (ram.available && ram.total_bytes > 0)
     {
         std::snprintf(value, sizeof(value), "%lu/%luK",
@@ -2602,6 +2634,14 @@ void Runtime::renderInfoPage()
     {
         info_scroll_ = max_scroll;
     }
+
+    const size_t total_pages = std::max<size_t>(1U, (line_count + kInfoPageSize - 1U) / kInfoPageSize);
+    const size_t current_page = (line_count > 0) ? ((info_scroll_ / kInfoPageSize) + 1U) : 1U;
+    char pos[16] = {};
+    std::snprintf(pos, sizeof(pos), "%u/%u",
+                  static_cast<unsigned>(current_page),
+                  static_cast<unsigned>(total_pages));
+    drawTitleBar("INFO", pos);
 
     const int line_h = text_renderer_.lineHeight();
     const int start_y = 10;
