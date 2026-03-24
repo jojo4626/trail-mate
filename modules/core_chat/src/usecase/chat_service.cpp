@@ -9,6 +9,13 @@
 
 namespace chat
 {
+namespace
+{
+NodeId normalize_conversation_peer(NodeId peer)
+{
+    return (peer == 0 || peer == 0xFFFFFFFFUL) ? 0 : peer;
+}
+} // namespace
 
 #ifndef CHAT_SERVICE_LOG_ENABLE
 #define CHAT_SERVICE_LOG_ENABLE 0
@@ -32,6 +39,12 @@ ChatService::ChatService(ChatModel& model,
 
 MessageId ChatService::sendText(ChannelId channel, const std::string& text, NodeId peer)
 {
+    return sendTextWithId(channel, text, 0, peer);
+}
+
+MessageId ChatService::sendTextWithId(ChannelId channel, const std::string& text,
+                                      MessageId forced_msg_id, NodeId peer)
+{
     if (text.empty())
     {
         return 0;
@@ -39,13 +52,13 @@ MessageId ChatService::sendText(ChannelId channel, const std::string& text, Node
 
     // Try to send via adapter first to get packet ID
     MessageId msg_id = 0;
-    bool queued = adapter_.sendText(channel, text, &msg_id, peer);
+    bool queued = adapter_.sendTextWithId(channel, text, forced_msg_id, &msg_id, peer);
 
     ChatMessage msg;
     msg.protocol = active_protocol_;
     msg.channel = channel;
     msg.from = 0; // Local message
-    msg.peer = peer;
+    msg.peer = normalize_conversation_peer(peer);
     msg.msg_id = msg_id;
     msg.timestamp = now_message_timestamp();
     msg.text = text;
@@ -147,14 +160,7 @@ void ChatService::processIncoming()
         msg.protocol = active_protocol_;
         msg.channel = incoming.channel;
         msg.from = incoming.from;
-        if (incoming.to == 0xFFFFFFFF)
-        {
-            msg.peer = 0;
-        }
-        else
-        {
-            msg.peer = incoming.from;
-        }
+        msg.peer = normalize_conversation_peer(incoming.to) == 0 ? 0 : incoming.from;
         msg.msg_id = incoming.msg_id;
         // Use local receive time to avoid sender clock skew.
         msg.timestamp = now_message_timestamp();

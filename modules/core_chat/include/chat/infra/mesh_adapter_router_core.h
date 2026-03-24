@@ -11,6 +11,7 @@ class MeshAdapterRouterCore : public IMeshAdapter
 {
   public:
     bool installBackend(MeshProtocol protocol, std::unique_ptr<IMeshAdapter> backend);
+    void setActiveProtocol(MeshProtocol protocol);
     bool hasBackend() const;
     MeshProtocol backendProtocol() const;
     IMeshAdapter* backendForProtocol(MeshProtocol protocol);
@@ -19,6 +20,9 @@ class MeshAdapterRouterCore : public IMeshAdapter
     MeshCapabilities getCapabilities() const override;
     bool sendText(ChannelId channel, const std::string& text,
                   MessageId* out_msg_id, NodeId peer = 0) override;
+    bool sendTextWithId(ChannelId channel, const std::string& text,
+                        MessageId forced_msg_id,
+                        MessageId* out_msg_id, NodeId peer = 0) override;
     bool pollIncomingText(MeshIncomingText* out) override;
     bool sendAppData(ChannelId channel, uint32_t portnum,
                      const uint8_t* payload, size_t len,
@@ -44,8 +48,12 @@ class MeshAdapterRouterCore : public IMeshAdapter
     void processSendQueue() override;
 
   private:
-    std::unique_ptr<IMeshAdapter> backend_;
-    MeshProtocol backend_protocol_ = MeshProtocol::Meshtastic;
+    IMeshAdapter* activeBackend();
+    const IMeshAdapter* activeBackend() const;
+
+    std::unique_ptr<IMeshAdapter> meshtastic_backend_;
+    std::unique_ptr<IMeshAdapter> meshcore_backend_;
+    MeshProtocol active_protocol_ = MeshProtocol::Meshtastic;
 };
 
 } // namespace chat

@@ -526,7 +526,10 @@
 
 /*Optionally declare custom fonts here.
  *You can use these fonts as default font too and they will be available globally.
- *E.g. #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)*/
+ *E.g. #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)
+ *
+ * Keep ESP-only fonts declared from ESP-owned paths so NRF builds don't
+ * accidentally pull large bitmap assets into their source lists.*/
 #define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(lv_font_noto_cjk_16_2bpp)
 
 /*Always set a default font*/

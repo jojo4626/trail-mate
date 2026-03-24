@@ -5,13 +5,13 @@
                   "includeDir":  "include",
                   "srcDir":  "src",
                   "flags":  [
+                                "-I../../platform/shared/include",
                                 "-I../../modules/core_sys/include",
                                 "-I../../modules/core_chat/include",
                                 "-I../../modules/core_gps/include",
                                 "-I../../modules/core_hostlink/include",
                                 "-I../../modules/core_team/include",
-                                "-I../../platform/esp/arduino_common/include",
-                                "-I../../platform/esp/boards/include"
+                                "-I../../platform/esp/arduino_common/include"
                             ]
               },
     "dependencies":  [

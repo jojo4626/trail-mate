@@ -10,6 +10,10 @@
 
 namespace chat
 {
+namespace meshcore
+{
+class IMeshCoreBleBackend;
+}
 
 struct MeshCapabilities
 {
@@ -48,6 +52,23 @@ class IMeshAdapter
      */
     virtual bool sendText(ChannelId channel, const std::string& text,
                           MessageId* out_msg_id, NodeId peer = 0) = 0;
+
+    /**
+     * @brief Send text message with a caller-supplied message ID if supported
+     * @param channel Channel ID
+     * @param text Message text
+     * @param forced_msg_id Preferred message ID (0 = auto)
+     * @param out_msg_id Output message ID (if successful)
+     * @param peer Destination node (0 for broadcast)
+     * @return true if queued successfully
+     */
+    virtual bool sendTextWithId(ChannelId channel, const std::string& text,
+                                MessageId forced_msg_id,
+                                MessageId* out_msg_id, NodeId peer = 0)
+    {
+        (void)forced_msg_id;
+        return sendText(channel, text, out_msg_id, peer);
+    }
 
     /**
      * @brief Poll for incoming text messages
@@ -262,6 +283,16 @@ class IMeshAdapter
     virtual const IMeshAdapter* backendForProtocol(MeshProtocol protocol) const
     {
         (void)protocol;
+        return nullptr;
+    }
+
+    virtual meshcore::IMeshCoreBleBackend* asMeshCoreBleBackend()
+    {
+        return nullptr;
+    }
+
+    virtual const meshcore::IMeshCoreBleBackend* asMeshCoreBleBackend() const
+    {
         return nullptr;
     }
 

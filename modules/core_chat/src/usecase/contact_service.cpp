@@ -6,6 +6,7 @@
 #include "chat/usecase/contact_service.h"
 #include "sys/clock.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -35,6 +36,13 @@ void ContactService::begin()
 {
     node_store_.begin();
     contact_store_.begin();
+
+    const std::vector<uint32_t> contact_ids = contact_store_.getAllContactIds();
+    for (size_t i = 0; i < contact_ids.size(); ++i)
+    {
+        (void)ensureNodeExistsForContact(contact_ids[i]);
+    }
+
     invalidateCache();
 }
 
@@ -60,7 +68,7 @@ void ContactService::updateNodeProtocol(uint32_t node_id, uint8_t protocol, uint
 
 void ContactService::updateNodePosition(uint32_t node_id, const NodePosition& pos)
 {
-    positions_[node_id] = pos;
+    node_store_.updatePosition(node_id, pos);
     invalidateCache();
 }
 
@@ -123,6 +131,10 @@ std::vector<NodeInfo> ContactService::getNearby() const
 
 bool ContactService::addContact(uint32_t node_id, const char* nickname)
 {
+    if (!ensureNodeExistsForContact(node_id))
+    {
+        return false;
+    }
     if (contact_store_.setNickname(node_id, nickname))
     {
         invalidateCache();
@@ -133,6 +145,10 @@ bool ContactService::addContact(uint32_t node_id, const char* nickname)
 
 bool ContactService::editContact(uint32_t node_id, const char* nickname)
 {
+    if (!ensureNodeExistsForContact(node_id))
+    {
+        return false;
+    }
     if (contact_store_.setNickname(node_id, nickname))
     {
         invalidateCache();
@@ -162,7 +178,6 @@ bool ContactService::removeNode(uint32_t node_id)
     {
         removed = true;
     }
-    positions_.erase(node_id);
     if (removed)
     {
         invalidateCache();
@@ -227,11 +242,17 @@ void ContactService::buildCache() const
         info.channel = entry.channel;
         info.protocol = static_cast<NodeProtocolType>(entry.protocol);
         info.role = static_cast<NodeRoleType>(entry.role);
-        auto pos_it = positions_.find(entry.node_id);
-        if (pos_it != positions_.end())
-        {
-            info.position = pos_it->second;
-        }
+        info.position.valid = entry.position_valid;
+        info.position.latitude_i = entry.position_latitude_i;
+        info.position.longitude_i = entry.position_longitude_i;
+        info.position.has_altitude = entry.position_has_altitude;
+        info.position.altitude = entry.position_altitude;
+        info.position.timestamp = entry.position_timestamp;
+        info.position.precision_bits = entry.position_precision_bits;
+        info.position.pdop = entry.position_pdop;
+        info.position.hdop = entry.position_hdop;
+        info.position.vdop = entry.position_vdop;
+        info.position.gps_accuracy_mm = entry.position_gps_accuracy_mm;
 
         if (info.short_name[0] == '\0')
         {
@@ -260,6 +281,45 @@ void ContactService::buildCache() const
     cache_timestamp_ = now_ms;
 }
 
+bool ContactService::ensureNodeExistsForContact(uint32_t node_id)
+{
+    if (node_id == 0)
+    {
+        return false;
+    }
+
+    if (hasNodeEntry(node_id))
+    {
+        return true;
+    }
+
+    node_store_.upsert(node_id,
+                       nullptr,
+                       nullptr,
+                       0,
+                       std::numeric_limits<float>::quiet_NaN(),
+                       std::numeric_limits<float>::quiet_NaN(),
+                       0,
+                       kNodeRoleUnknown,
+                       0xFF,
+                       0,
+                       0xFF);
+    return hasNodeEntry(node_id);
+}
+
+bool ContactService::hasNodeEntry(uint32_t node_id) const
+{
+    const auto& entries = node_store_.getEntries();
+    for (size_t i = 0; i < entries.size(); ++i)
+    {
+        if (entries[i].node_id == node_id)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool ContactService::isNodeVisible(uint32_t last_seen) const
 {
     (void)last_seen;
@@ -268,7 +328,7 @@ bool ContactService::isNodeVisible(uint32_t last_seen) const
 
 std::string ContactService::formatTimeStatus(uint32_t last_seen) const
 {
-    uint32_t now_secs = time(nullptr);
+    uint32_t now_secs = sys::epoch_seconds_now();
     if (now_secs < last_seen)
     {
         return "Offline";

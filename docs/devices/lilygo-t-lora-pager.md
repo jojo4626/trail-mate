@@ -1,20 +1,41 @@
-<div align="center" markdown="1">
-  <img src="../../.github/LilyGo_logo.png" alt="LilyGo logo" width="100"/>
-</div>
+# LilyGo T-LoRa Pager
 
-<h1 align = "center">🌟LilyGo T-LoRa-Pager🌟</h1>
+This document records the board-level hardware facts currently used by this
+repository for `LilyGo T-LoRa Pager`.
 
+It exists to prevent drift between:
 
-## `1` Overview
+- the real LilyGo T-LoRa Pager hardware
+- this repository's PlatformIO board / variant / environment definitions
+- the ESP board runtime implementation that actually brings the hardware up
 
-* This page introduces the hardware parameters related to `LilyGO T-LoRa-Pager`
+## Summary
 
-```bash
+- MCU: `ESP32-S3`
+- Flash / PSRAM: `16MB QSPI flash + 8MB QSPI PSRAM`
+- Display: `ST7796` SPI TFT
+- UI resolution used by this repo: `480x222`
+- Radio: `SX1262` or `SX1280` depending on build environment
+- GNSS: `u-blox MIA-M10Q`
+- Input: `rotary encoder + center key + I2C keyboard`
+- Power / battery: `BQ25896 + BQ27220`
+- RTC: `PCF85063`
+- NFC: `ST25R3916`
+- Motion sensor: `BHI260AP`
+- Audio codec: `ES8311`
+- GPIO expander: `XL9555`
 
+## Physical Layout
+
+The original vendor overview included a useful front-panel sketch. It is kept
+here because it helps quickly identify the visible controls and connectors when
+working with real hardware:
+
+```text
 /---------------------------------------------------\
 | ┌───────────────────────────────────────────┐ |-| |
 | |                                           | |/| |
-| |               480 x 222 IPS               | |/| |  
+| |               480 x 222 IPS               | |/| |
 | |                                           | |/| |
 | └───────────────────────────────────────────┘ |-| |
 |                                                   |
@@ -24,265 +45,261 @@
 \---|RST|--|BOOT|--|POWER|--|SD SOCKET|--|USB-C|----/
       ^       ^       ^          ^           ^
       |       |       |          |           |
-      |       |       |          |           └─── The adapter is used as a charging and 
-      |       |       |          |                programming interface, and the USB-C can 
+      |       |       |          |           └─── The adapter is used as a charging and
+      |       |       |          |                programming interface, and the USB-C can
       |       |       |          |                be programmed to power external devices
-      |       |       |          |      
+      |       |       |          |
       |       |       |          └────── Supports up to 32 GB SD memory card
-      |       |       |               
-      |       |       └───────────── The power button is only valid when the device is 
+      |       |       |
+      |       |       └───────────── The power button is only valid when the device is
       |       |                     turned off and cannot be customized or program controlled.
       |       |
       |       └───────────────────── (GPIO0) Custom Button or Enter download Mode
       |
-      └───────────────────────────── Click to reset the device, 
+      └───────────────────────────── Click to reset the device,
                                      it cannot be programmed or controlled by the program
-
-
-
-
-
-
 ```
 
-### Extension interface
+## Board Ownership
 
-```bash
+Primary board definition files:
 
->----------Place the screen facing up---------------<
-|---------------------------------------------------|
-|     | SCL | SDA | MISO  | SCK  | TX | GND  |      |
-|     | 5V  | CE  | GPIO9 | MOSI | RX | 3.3V |      |
-|---------------------------------------------------|
+- [boards/lilygo-t-lora-pager.json](/C:/Users/VicLi/Documents/Projects/trail-mate/boards/lilygo-t-lora-pager.json)
+- [pins_arduino.h](/C:/Users/VicLi/Documents/Projects/trail-mate/variants/lilygo_tlora_pager/pins_arduino.h)
+- [tlora_pager.ini](/C:/Users/VicLi/Documents/Projects/trail-mate/variants/lilygo_tlora_pager/envs/tlora_pager.ini)
+- [tlora_pager_board.cpp](/C:/Users/VicLi/Documents/Projects/trail-mate/boards/tlora_pager/src/tlora_pager_board.cpp)
+- [tlora_pager_board.h](/C:/Users/VicLi/Documents/Projects/trail-mate/boards/tlora_pager/include/boards/tlora_pager/tlora_pager_board.h)
 
-* CE is XL9555 GPIO9
-* TX is ESP32-S3 GPIO43
-* RX is ESP32-S3 GPIO44
-* MISO is ESP32-S3 GPIO33
-* MOSI is ESP32-S3 GPIO34
-* SCK is ESP32-S3 GPIO35
-* SDA is ESP32-S3 GPIO3
-* SCL is ESP32-S3 GPIO2
+Rules:
 
-```
+- pin truth belongs in `variants/lilygo_tlora_pager/pins_arduino.h`
+- board bring-up behavior belongs in `boards/tlora_pager/src/tlora_pager_board.cpp`
+- environment-specific radio and display choices belong in `variants/lilygo_tlora_pager/envs/tlora_pager.ini`
+- device docs should reflect what this repository actually builds, not just vendor marketing material
 
-### nRF24L01 PA Shield interface
+## Important Boundary
 
-```bash
->----------Place the screen facing up---------------<
-|---------------------------------------------------|
-|     | SCL | SDA | MISO  | SCK  | TX | GND  |      |
-|     | 5V  | CE  | GPIO9 | MOSI | RX | 3.3V |      |
-|---------------------------------------------------|
+This repository uses the LilyGo Pager as an ESP board with its own runtime
+implementation in [tlora_pager_board.cpp](/C:/Users/VicLi/Documents/Projects/trail-mate/boards/tlora_pager/src/tlora_pager_board.cpp).
 
-* CE is XL9555 GPIO9 , nRF24L01 Shield Tx/Rx Control, LOW:Rx HIGH:Tx
-* TX is ESP32-S3 GPIO43, nRF24L01 Shield CE Pin
-* RX is ESP32-S3 GPIO44, nRF24L01 Shield CS Pin
-* MISO is ESP32-S3 GPIO33, nRF24L01 Shield MISO Pin
-* MOSI is ESP32-S3 GPIO34, nRF24L01 Shield MOSI Pin
-* SCK is ESP32-S3 GPIO35, nRF24L01 Shield SCK Pin
-* SDA is ESP32-S3 GPIO3, nRF24L01 Shield No Connect
-* SCL is ESP32-S3 GPIO2, nRF24L01 Shield No Connect
+That means the most authoritative sources for day-to-day maintenance are:
 
-```
+- `pins_arduino.h` for GPIO ownership
+- `tlora_pager.ini` for enabled features per environment
+- `tlora_pager_board.cpp` for initialization order and power sequencing
 
-### ✨ Hardware-Features
+If external vendor docs disagree with runtime behavior here, prefer the checked-in
+board runtime unless real hardware verification proves otherwise.
 
-| Features                         | Params                           |
-| -------------------------------- | -------------------------------- |
-| SOC                              | [Espressif ESP32-S3][1]          |
-| Flash                            | 16MB(QSPI)                       |
-| PSRAM                            | 8MB (QSPI)                       |
-| GNSS                             | [UBlox MIA-M10Q][2]              |
-| LoRa                             | [Semtech SX1262][3]              |
-| NFC                              | [ST25R3916][4]                   |
-| Smart sensor                     | [Bosch BHI260AP][5]              |
-| Real-Time Clock                  | [NXP PCF85063A][6]               |
-| Battery Charger                  | [Ti BQ25896][7]                  |
-| Battery Gauge                    | [Ti BQ27220][8]                  |
-| Haptic driver                    | [Ti DRV2605][9]                  |
-| Audio Codec                      | [Everest-semi ES8311][10]        |
-| GPIO Expand                      | [XINLUDA XL9555][11]             |
-| I2C Keyboard                     | [Ti TCA8418][12]                 |
-| Audio Power Amplifier            | [Nsiway NS4150B(3W Class D)][13] |
-| Display Backlight Driver         | [AW9364 16-Level Led Driver][14] |
-| SD Card Socket                   | ✅️ Maximum 32GB (FAT32 format)    |
-| External low speed clock crystal | ✅️                                |
+## Build Environments
 
-> \[!TIP]
-> 
-> * SD card only supports FAT format, please pay attention to the selection of SD format
-> * Device shutdown can only shut down the device when no USB is connected.
-> * The PWR button can only be used to wake up the device by pressing it for one second when the device is turned off. It cannot be used for programming.
-> * ST25R3916 (NFC) does not have an integrated capacitive sensor, which means that to read a card, the reader must be turned on, and the presence of a card cannot be detected by turning on the capacitive sensor.
-> * ESP32-S3 uses an external QSPI Flash and PSRAM solution, not a built-in PSRAM or Flash solution
-> * USB/charging state is detected via the BQ25896 PMU (VBUS/charge status), so UI charging indicators and software shutdown checks rely on PMU detection.
+Defined in [tlora_pager.ini](/C:/Users/VicLi/Documents/Projects/trail-mate/variants/lilygo_tlora_pager/envs/tlora_pager.ini):
 
-[1]: https://www.espressif.com.cn/en/products/socs/esp32-s3 "ESP32-S3"
-[2]: https://www.u-blox.com/en/product/mia-m10-series "UBlox MIA-M10Q"
-[3]: https://www.semtech.com/products/wireless-rf/lora-connect/sx1262 "Semtech SX1262"
-[4]: https://www.st.com/en/nfc/st25r3916.html "ST25R3916"
-[5]: https://www.bosch-sensortec.com/products/smart-sensor-systems/bhi260ab "BHI260AP"
-[6]: https://www.nxp.com/products/PCF85063A "PCF85063A"
-[7]: https://www.ti.com/product/BQ25896 "BQ25896"
-[8]: https://www.ti.com/product/BQ27220 "BQ27220"
-[9]: https://www.ti.com/product/DRV2605 "DRV2605"
-[10]: http://www.everest-semi.com/pdf/ES8311%20PB.pdf "ES8311"
-[11]: https://www.xinluda.com/en/I2C-to-GPIO-extension/ "XL9555"
-[12]: https://www.ti.com/product/TCA8418 "TCA8418"
-[13]: http://www.nsiway.com.cn/product/58.html "NS4150B"
-[14]: https://item.szlcsc.com/datasheet/AW9364DNR/385721.html "AW9364"
+- `tlora_pager_sx1262`
+- `tlora_pager_sx1262_debug`
+- `tlora_pager_sx1280`
+- `tlora_pager_sx1280_debug`
 
-### ✨ Display-Features
+Current build-time facts:
 
-| Features              | Params        |
-| --------------------- | ------------- |
-| Resolution            | 480 x 222     |
-| Display Size          | 2.33 Inch     |
-| Luminance on surface  | 450 cd/m²     |
-| Driver IC             | ST7796U (SPI) |
-| Contrast ratio        | 1000:1        |
-| Color gamut           | 70%           |
-| PPI                   | 221           |
-| Display Colors        | 262K          |
-| View Direction        | All  (IPS)    |
-| Operating Temperature | -20～70°C     |
+- all Pager environments define `ARDUINO_T_LORA_PAGER`
+- `SX1262` builds define `ARDUINO_LILYGO_LORA_SX1262`
+- `SX1280` builds define `ARDUINO_LILYGO_LORA_SX1280`
+- the display driver is built as `ST7796`
+- this repo currently builds the Pager UI with `SCREEN_WIDTH=480` and `SCREEN_HEIGHT=222`
 
-### 📍 [Pins Map](https://github.com/espressif/arduino-esp32/blob/master/variants/lilygo_tlora_pager/pins_arduino.h)
+## Verified Pin Map
 
-| Name                                 | GPIO NUM                       | Free |
-| ------------------------------------ | ------------------------------ | ---- |
-| Custom Pin                           | GPIO9 (External 12-Pin socket) | ✅️    |
-| Uart1 TX                             | 43(External 12-Pin socket)     | ✅️    |
-| Uart1 RX                             | 44(External 12-Pin socket)     | ✅️    |
-| SDA                                  | 3                              | ❌    |
-| SCL                                  | 2                              | ❌    |
-| SPI MOSI                             | 34                             | ❌    |
-| SPI MISO                             | 33                             | ❌    |
-| SPI SCK                              | 35                             | ❌    |
-| SD CS                                | 21                             | ❌    |
-| SD MOSI                              | Share with SPI bus             | ❌    |
-| SD MISO                              | Share with SPI bus             | ❌    |
-| SD SCK                               | Share with SPI bus             | ❌    |
-| Keyboard(**TCA8418**) SDA            | Share with I2C bus             | ❌    |
-| Keyboard(**TCA8418**) SCL            | Share with I2C bus             | ❌    |
-| Keyboard(**TCA8418**) Interrupt      | 6                              | ❌    |
-| Keyboard Backlight                   | 46                             | ❌    |
-| Rotary Encoder A                     | 40                             | ❌    |
-| Rotary Encoder B                     | 41                             | ❌    |
-| Rotary Encoder Center                | 7                              | ❌    |
-| RTC(**PCF85063A**) SDA               | Share with I2C bus             | ❌    |
-| RTC(**PCF85063A**) SCL               | Share with I2C bus             | ❌    |
-| RTC(**PCF85063A**) Interrupt         | 1                              | ❌    |
-| NFC(**ST25R3916**) CS                | 39                             | ❌    |
-| NFC(**ST25R3916**) Interrupt         | 5                              | ❌    |
-| NFC(**ST25R3916**) MOSI              | Share with SPI bus             | ❌    |
-| NFC(**ST25R3916**) MISO              | Share with SPI bus             | ❌    |
-| NFC(**ST25R3916**) SCK               | Share with SPI bus             | ❌    |
-| Sensor(**BHI260**) Interrupt         | 8                              | ❌    |
-| Sensor(**BHI260**) SDA               | Share with I2C bus             | ❌    |
-| Sensor(**BHI260**) SCL               | Share with I2C bus             | ❌    |
-| Audio Codec(**ES8311**) WS           | 18                             | ❌    |
-| Audio Codec(**ES8311**) SCK          | 11                             | ❌    |
-| Audio Codec(**ES8311**) MCLK         | 10                             | ❌    |
-| Audio Codec(**ES8311**) data out     | 45                             | ❌    |
-| Audio Codec(**ES8311**) data in      | 17                             | ❌    |
-| Audio Codec(**ES8311**) SDA          | Share with I2C bus             | ❌    |
-| Audio Codec(**ES8311**) SCL          | Share with I2C bus             | ❌    |
-| GNSS(**MIA-M10Q**) TX                | 12                             | ❌    |
-| GNSS(**MIA-M10Q**) RX                | 4                              | ❌    |
-| GNSS(**MIA-M10Q**) PPS               | 13                             | ❌    |
-| LoRa(**SX1262 or SX1280**) SCK       | Share with SPI bus             | ❌    |
-| LoRa(**SX1262 or SX1280**) MISO      | Share with SPI bus             | ❌    |
-| LoRa(**SX1262 or SX1280**) MOSI      | Share with SPI bus             | ❌    |
-| LoRa(**SX1262 or SX1280**) RESET     | 47                             | ❌    |
-| LoRa(**SX1262 or SX1280**) BUSY      | 48                             | ❌    |
-| LoRa(**SX1262 or SX1280**) CS        | 36                             | ❌    |
-| LoRa(**SX1262 or SX1280**) Interrupt | 14                             | ❌    |
-| Display CS                           | 38                             | ❌    |
-| Display MOSI                         | Share with SPI bus             | ❌    |
-| Display MISO                         | Share with SPI bus             | ❌    |
-| Display SCK                          | Share with SPI bus             | ❌    |
-| Display DC                           | 37                             | ❌    |
-| Display RESET                        | Not Connected                  | ❌    |
-| Display Backlight(16 Level)          | 42                             | ❌    |
-| Gauge(**BQ27220**) SDA               | Share with I2C bus             | ❌    |
-| Gauge(**BQ27220**) SCL               | Share with I2C bus             | ❌    |
-| Charger(**BQ25896**) SDA             | Share with I2C bus             | ❌    |
-| Charger(**BQ25896**) SCL             | Share with I2C bus             | ❌    |
-| Haptic Driver(**DRV2605**) SDA       | Share with I2C bus             | ❌    |
-| Haptic Driver(**DRV2605**) SCL       | Share with I2C bus             | ❌    |
-| Expand(**XL9555**) SDA               | Share with I2C bus             | ❌    |
-| Expand(**XL9555**) SCL               | Share with I2C bus             | ❌    |
-| Expand(**XL9555**) GPIO0             | Haptic Driver Enable           | ❌    |
-| Expand(**XL9555**) GPIO1             | Audio Power Amplifier Enable   | ❌    |
-| Expand(**XL9555**) GPIO2             | Keyboard RESET                 | ❌    |
-| Expand(**XL9555**) GPIO3             | LoRa Power supply Enable       | ❌    |
-| Expand(**XL9555**) GPIO4             | GNSS Power supply Enable       | ❌    |
-| Expand(**XL9555**) GPIO5             | NFC Power supply Enable        | ❌    |
-| Expand(**XL9555**) GPIO6             | ~~Display RESET~~ (No connect) | ❌    |
-| Expand(**XL9555**) GPIO7             | GNSS RESET                     | ❌    |
-| Expand(**XL9555**) GPIO10            | Keyboard Power supply Enable   | ❌    |
-| Expand(**XL9555**) GPIO11            | External 12-Pin socket         | ✅️    |
-| Expand(**XL9555**) GPIO12            | SD Insert Detect               | ❌    |
-| Expand(**XL9555**) GPIO14            | SD Power supply Enable         | ❌    |
-<!-- | Expand(**XL9555**) GPIO13            | SD PullUp Enable               | ❌    | -->
+The pin map below is taken from
+[pins_arduino.h](/C:/Users/VicLi/Documents/Projects/trail-mate/variants/lilygo_tlora_pager/pins_arduino.h),
+which is the active variant source for this repo.
 
-### 🧑🏼‍🔧 I2C Devices Address
+### Shared I2C Bus
 
-| Devices                        | 7-Bit Address | Share Bus |
-| ------------------------------ | ------------- | --------- |
-| [Codec ES8311][10]             | 0x18          | ✅️         |
-| [Expands IO XL9555][11]        | 0x20          | ✅️         |
-| [Smart sensor BHI260AP][5]     | 0x28          | ✅️         |
-| [Real-Time Clock PCF85063A][6] | 0x51          | ✅️         |
-| [PowerManage BQ25896][7]       | 0x6B          | ✅️         |
-| [Gauge BQ27220][8]             | 0x55          | ✅️         |
-| [Keyboard TCA8418][12]         | 0x34          | ✅️         |
-| [Haptic driver DRV2605][9]     | 0x5A          | ✅️         |
+- SDA: `3`
+- SCL: `2`
 
-### ⚡ PowerManage Channel
+Devices sharing this bus include:
 
-| Channel                  | Peripherals        |
-| ------------------------ | ------------------ |
-| Expand(**XL9555**) GPIO0 | **DRV2605 Enable** |
-| Expand(**XL9555**) GPIO1 | **Speaker**        |
-| Expand(**XL9555**) GPIO3 | **LoRa**           |
-| Expand(**XL9555**) GPIO4 | **GNSS**           |
-| Expand(**XL9555**) GPIO5 | **NFC**            |
-| Expand(**XL9555**) GPIO8 | **Keyboard**       |
-| Expand(**XL9555**) GPIO14 | **SD Card**       |
+- `BHI260AP`
+- `PCF85063`
+- `BQ25896`
+- `BQ27220`
+- `DRV2605`
+- `ES8311`
+- `XL9555`
+- `TCA8418`
 
-### ⚡ Electrical parameters
+### Shared SPI Bus
 
-| Features                   | Details                    |
-| -------------------------- | -------------------------- |
-| 🔗USB-C Input Voltage       | 3.9V-6V                    |
-| 🔗USB-C Output Voltage      | 4.55-5.55V                 |
-| ⚡USB-C Output Current      | 0.5-1A                     |
-| ⚡Charge Current            | 0-3008mA(\(Programmable\)) |
-| 🔋Battery Voltage           | 3.7V                       |
-| 🔋Battery capacity          | 1500mA (\(5.55Wh\))        |
-| 🔋Charge Temperature  Range | 0~60°                      |
+- MOSI: `34`
+- MISO: `33`
+- SCK: `35`
 
-> \[!IMPORTANT]
-> ⚠️ Recommended to use a charging current lower than 750mA.
-> The charging current should not be greater than half of the battery capacity
+Bus users:
 
-### ⚡ Power consumption reference
+- LoRa radio
+- SD card
+- NFC
+- display
 
-| Mode       | Wake-Up Mode | Current |
-| ---------- | ------------ | ------- |
-| DeepSleep  | BootButton   | 530uA   |
-| DeepSleep  | Timer        | 530uA   |
-| LightSleep | BootButton   | ~2.26mA |
-| Power OFF  | PowerButton  | 26uA    |
+### External UART / Expansion Header
 
-### Resource
+- TX: `43`
+- RX: `44`
+- custom external pin: `9`
 
-* [Radio-SX1262(Sub 1G LoRa and FSK )](https://www.semtech.com/products/wireless-rf/lora-connect/sx1262)
-* [Radio-SX1280(2.4G LoRa,FLRC,(G)FSK)](https://www.semtech.cn/products/wireless-rf/lora-connect/sx1280)
-* [Radio-CC1101(Sub 1G (G)MSK, 2(G)FSK, 4(G)FSK, ASK, OOK)](https://www.ti.com/product/CC1101)
-* [Radio-LR1121(Sub 1G + 2.4G LoRa)](https://www.semtech.com/products/wireless-rf/lora-connect/lr1121)
-* [Radio-SI4432(Sub 1G ISM)](https://www.silabs.com/wireless/proprietary/ezradiopro-sub-ghz-ics/device.si4432?tab=specs)
-* [Schematic](../../schematic/T-Watch%20Ultra%20V1.0%20SCH%2025-07-24.pdf)
+### Buttons And Input
+
+- Power / wake button: `0`
+- Boot / custom button: `9`
+- Rotary A: `40`
+- Rotary B: `41`
+- Rotary center: `7`
+- Keyboard interrupt: `6`
+- Keyboard backlight: `46`
+
+Notes:
+
+- this board uses a rotary encoder instead of a 5-way joystick
+- the keyboard is handled through `TCA8418`
+- the boot / power buttons are not interchangeable in behavior
+
+### GNSS
+
+- TX: `12`
+- RX: `4`
+- PPS: `13`
+
+### LoRa
+
+- CS: `36`
+- RESET: `47`
+- BUSY: `48`
+- IRQ / DIO: `14`
+- SPI bus: shared on `34/33/35`
+
+### Display
+
+- Driver: `ST7796`
+- CS: `38`
+- DC: `37`
+- RESET: `-1` (`not connected`)
+- Backlight: `42`
+- SPI bus: shared on `34/33/35`
+
+### SD Card
+
+- CS: `21`
+- SPI bus: shared on `34/33/35`
+
+### Audio
+
+- I2S WS: `18`
+- I2S SCK: `11`
+- I2S MCLK: `10`
+- I2S data out: `45`
+- I2S data in: `17`
+
+### Interrupt Pins
+
+- RTC interrupt: `1`
+- NFC interrupt: `5`
+- Motion sensor interrupt: `8`
+
+### NFC
+
+- ST25R3916 CS: `39`
+- ST25R3916 interrupt: `5`
+
+## XL9555 Power / Control Lines
+
+The Pager uses an `XL9555` I/O expander to gate multiple peripherals.
+
+Current logical assignments from
+[pins_arduino.h](/C:/Users/VicLi/Documents/Projects/trail-mate/variants/lilygo_tlora_pager/pins_arduino.h):
+
+- `EXPANDS_DRV_EN = 0`
+- `EXPANDS_AMP_EN = 1`
+- `EXPANDS_KB_RST = 2`
+- `EXPANDS_LORA_EN = 3`
+- `EXPANDS_GPS_EN = 4`
+- `EXPANDS_NFC_EN = 5`
+- `EXPANDS_GPS_RST = 7`
+- `EXPANDS_KB_EN = 8`
+- `EXPANDS_GPIO_EN = 9`
+- `EXPANDS_SD_DET = 10`
+- `EXPANDS_SD_PULLEN = 11`
+- `EXPANDS_SD_EN = 12`
+
+Operationally this means power sequencing for LoRa, GNSS, NFC, keyboard, SD, audio
+and haptics is not just raw GPIO configuration on the ESP32-S3. The expander state
+also matters.
+
+## Feature Flags
+
+The active variant declares these board capabilities:
+
+- `USING_AUDIO_CODEC`
+- `USING_XL9555_EXPANDS`
+- `USING_PPM_MANAGE`
+- `USING_BQ_GAUGE`
+- `USING_INPUT_DEV_ROTARY`
+- `USING_INPUT_DEV_KEYBOARD`
+- `USING_ST25R3916`
+- `USING_BHI260_SENSOR`
+- `HAS_SD_CARD_SOCKET`
+
+These flags are part of the board contract and are relied on by the ESP platform code.
+
+## Runtime Bring-Up Notes
+
+The board runtime in
+[tlora_pager_board.cpp](/C:/Users/VicLi/Documents/Projects/trail-mate/boards/tlora_pager/src/tlora_pager_board.cpp)
+currently initializes or manages:
+
+- battery gauge `BQ27220`
+- PMU `BQ25896`
+- GPIO expander `XL9555`
+- motion sensor `BHI260AP`
+- RTC `PCF85063`
+- NFC `ST25R3916`
+- keyboard `TCA8418`
+- audio codec `ES8311`
+- LoRa radio
+- display and related power lines
+
+When debugging missing peripherals on Pager, always check both:
+
+1. the raw pin assignment
+2. the relevant `XL9555` enable line or runtime init path
+
+## Display Notes
+
+There are two dimensions worth remembering:
+
+- vendor-facing panel spec is often described as `480 x 222`
+- this repository also builds with `SCREEN_WIDTH=480` and `SCREEN_HEIGHT=222`
+
+The panel is driven through `ST7796`, and physical orientation / UI rotation should be
+validated in runtime code rather than assumed from the raw panel numbers alone.
+
+## Known Risks / Maintenance Notes
+
+- `boards/lilygo-t-lora-pager.json` currently points at variant `lilygo_twatch_ultra`
+  while the actual pin definitions used for Pager live under
+  [variants/lilygo_tlora_pager](/C:/Users/VicLi/Documents/Projects/trail-mate/variants/lilygo_tlora_pager).
+  This is worth treating carefully whenever board configuration is refactored.
+- Pager hardware is highly multiplexed. A peripheral can fail because of shared-bus
+  contention, expander power state, or init order, not just because a GPIO number is wrong.
+- LoRa, SD, NFC and display all share the SPI bus, so bus ownership issues are realistic.
+- Many auxiliary devices share the same I2C bus, so probe order and bus locking matter.
+
+## Maintenance Guidance
+
+When changing this board next time:
+
+1. Update [pins_arduino.h](/C:/Users/VicLi/Documents/Projects/trail-mate/variants/lilygo_tlora_pager/pins_arduino.h) first for GPIO truth.
+2. Update [tlora_pager.ini](/C:/Users/VicLi/Documents/Projects/trail-mate/variants/lilygo_tlora_pager/envs/tlora_pager.ini) if the radio or build flags change.
+3. Update [tlora_pager_board.cpp](/C:/Users/VicLi/Documents/Projects/trail-mate/boards/tlora_pager/src/tlora_pager_board.cpp) for init order, power gating or runtime behavior.
+4. Keep this document aligned with the checked-in implementation, not with stale vendor copy.

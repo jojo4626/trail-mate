@@ -24,6 +24,8 @@ jobs:
           git ls-files -z '*.c' '*.cpp' '*.h' '*.hpp' ':(exclude)modules/core_chat/generated/**' \
             ':(exclude)modules/ui_shared/include/ui/assets/**' \
             ':(exclude)modules/ui_shared/src/ui/assets/**' \
+            ':(exclude)platform/nrf52/arduino_common/include/ui/fonts/**' \
+            ':(exclude)platform/nrf52/arduino_common/src/ui/fonts/**' \
             ':(exclude)third_party/codec2/**' \
             | xargs -0 clang-format-14 --dry-run --Werror
 

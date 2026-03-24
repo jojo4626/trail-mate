@@ -1,17 +1,16 @@
 # `platform/esp/boards`
 
-Board-specific platform shells and support code for ESP targets.
+Shared ESP board runtime glue, dispatcher support, and reusable ESP-facing code.
 
 Current responsibilities:
 
-- shared board-facing contracts under `include/board/*`
+- ESP-specific runtime dispatch under `include/platform/esp/boards/*` and `src/board_runtime.cpp`
 - ESP display abstractions and panel drivers under `include/display/*` and `src/display/*`
 - board-local input drivers such as rotary handling under `include/input/*` and `src/input/*`
-- concrete board implementations under `src/board/*` with public headers in `include/board/*`
-- board selection/runtime dispatch under `include/platform/esp/boards/*` and `src/board_runtime.cpp`
-- board-specific glue under `tdeck/`, `tlora_pager/`, `twatchs3/`, and `tab5/`
+- any remaining ESP-only shared board implementations under `src/board/*`
 
 Boundary note:
 
-- code that directly owns ESP board peripherals, display buses, PMU wiring, LoRa wiring, GPS wiring, touch/keyboard/NFC, display panel setup, or board singleton instances belongs here
-- these headers intentionally keep canonical `board/...`, `display/...`, and board-local `input/...` include prefixes so callers no longer depend on legacy `src/*` locations
+- code that directly owns a specific board's peripherals, display buses, PMU wiring, LoRa wiring, GPS wiring, touch/keyboard/NFC, display panel setup, or board singleton instances belongs under `boards/<name>/*`
+- platform-neutral board contracts now live under `platform/shared/include/board/*`
+- code that is intentionally shared across multiple ESP boards but still platform-specific belongs here

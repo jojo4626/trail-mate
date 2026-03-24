@@ -1,5 +1,6 @@
 #include "chat/infra/node_store_core.h"
 
+#include "chat/domain/contact_types.h"
 #include "sys/clock.h"
 #include <cmath>
 #include <cstring>
@@ -12,7 +13,7 @@ namespace contacts
 
 namespace
 {
-struct PersistedNodeEntry
+struct PersistedNodeEntryV6
 {
     uint32_t node_id;
     char short_name[10];
@@ -20,36 +21,82 @@ struct PersistedNodeEntry
     uint32_t last_seen;
     float snr;
     float rssi;
+    uint8_t hops_away;
+    uint8_t channel;
+    uint8_t next_hop;
     uint8_t protocol;
     uint8_t role;
-    uint8_t hops_away;
     uint8_t hw_model;
-    uint8_t channel;
 } __attribute__((packed));
 
-static_assert(sizeof(PersistedNodeEntry) == NodeStoreCore::kSerializedEntrySize,
-              "PersistedNodeEntry size changed");
+static_assert(sizeof(PersistedNodeEntryV6) == NodeStoreCore::kLegacySerializedEntrySize,
+              "PersistedNodeEntryV6 size changed");
 
-void copyIntoPersisted(PersistedNodeEntry& dst, const NodeEntry& src)
+struct PersistedNodeEntryV7
 {
-    dst.node_id = src.node_id;
-    memcpy(dst.short_name, src.short_name, sizeof(dst.short_name));
-    dst.short_name[sizeof(dst.short_name) - 1] = '\0';
-    memcpy(dst.long_name, src.long_name, sizeof(dst.long_name));
-    dst.long_name[sizeof(dst.long_name) - 1] = '\0';
-    dst.last_seen = src.last_seen;
-    dst.snr = src.snr;
-    dst.rssi = src.rssi;
-    dst.protocol = src.protocol;
-    dst.role = src.role;
-    dst.hops_away = src.hops_away;
-    dst.hw_model = src.hw_model;
-    dst.channel = src.channel;
-}
+    uint32_t node_id;
+    char short_name[10];
+    char long_name[32];
+    uint32_t last_seen;
+    float snr;
+    float rssi;
+    uint8_t hops_away;
+    uint8_t channel;
+    uint8_t next_hop;
+    uint8_t protocol;
+    uint8_t role;
+    uint8_t hw_model;
+    uint8_t position_valid;
+    uint8_t position_has_altitude;
+    uint8_t reserved[2];
+    int32_t position_latitude_i;
+    int32_t position_longitude_i;
+    int32_t position_altitude;
+    uint32_t position_timestamp;
+    uint32_t position_precision_bits;
+    uint32_t position_pdop;
+    uint32_t position_hdop;
+    uint32_t position_vdop;
+    uint32_t position_gps_accuracy_mm;
+} __attribute__((packed));
 
-void copyFromPersisted(NodeEntry& dst, const PersistedNodeEntry& src)
+static_assert(sizeof(PersistedNodeEntryV7) == NodeStoreCore::kSerializedEntrySize,
+              "PersistedNodeEntryV7 size changed");
+
+void copyCommonFields(NodeEntry& dst,
+                      uint32_t node_id,
+                      const char short_name[10],
+                      const char long_name[32],
+                      uint32_t last_seen,
+                      float snr,
+                      float rssi,
+                      uint8_t hops_away,
+                      uint8_t channel,
+                      uint8_t next_hop,
+                      uint8_t protocol,
+                      uint8_t role,
+                      uint8_t hw_model)
 {
     dst = {};
+    dst.node_id = node_id;
+    memcpy(dst.short_name, short_name, sizeof(dst.short_name));
+    dst.short_name[sizeof(dst.short_name) - 1] = '\0';
+    memcpy(dst.long_name, long_name, sizeof(dst.long_name));
+    dst.long_name[sizeof(dst.long_name) - 1] = '\0';
+    dst.last_seen = last_seen;
+    dst.snr = snr;
+    dst.rssi = rssi;
+    dst.hops_away = hops_away;
+    dst.channel = channel;
+    dst.next_hop = next_hop;
+    dst.protocol = protocol;
+    dst.role = role;
+    dst.hw_model = hw_model;
+}
+
+void copyIntoPersisted(PersistedNodeEntryV7& dst, const NodeEntry& src)
+{
+    memset(&dst, 0, sizeof(dst));
     dst.node_id = src.node_id;
     memcpy(dst.short_name, src.short_name, sizeof(dst.short_name));
     dst.short_name[sizeof(dst.short_name) - 1] = '\0';
@@ -58,11 +105,68 @@ void copyFromPersisted(NodeEntry& dst, const PersistedNodeEntry& src)
     dst.last_seen = src.last_seen;
     dst.snr = src.snr;
     dst.rssi = src.rssi;
+    dst.hops_away = src.hops_away;
+    dst.channel = src.channel;
+    dst.next_hop = src.next_hop;
     dst.protocol = src.protocol;
     dst.role = src.role;
-    dst.hops_away = src.hops_away;
     dst.hw_model = src.hw_model;
-    dst.channel = src.channel;
+    dst.position_valid = src.position_valid ? 1U : 0U;
+    dst.position_has_altitude = src.position_has_altitude ? 1U : 0U;
+    dst.position_latitude_i = src.position_latitude_i;
+    dst.position_longitude_i = src.position_longitude_i;
+    dst.position_altitude = src.position_altitude;
+    dst.position_timestamp = src.position_timestamp;
+    dst.position_precision_bits = src.position_precision_bits;
+    dst.position_pdop = src.position_pdop;
+    dst.position_hdop = src.position_hdop;
+    dst.position_vdop = src.position_vdop;
+    dst.position_gps_accuracy_mm = src.position_gps_accuracy_mm;
+}
+
+void copyFromPersisted(NodeEntry& dst, const PersistedNodeEntryV6& src)
+{
+    copyCommonFields(dst,
+                     src.node_id,
+                     src.short_name,
+                     src.long_name,
+                     src.last_seen,
+                     src.snr,
+                     src.rssi,
+                     src.hops_away,
+                     src.channel,
+                     src.next_hop,
+                     src.protocol,
+                     src.role,
+                     src.hw_model);
+}
+
+void copyFromPersisted(NodeEntry& dst, const PersistedNodeEntryV7& src)
+{
+    copyCommonFields(dst,
+                     src.node_id,
+                     src.short_name,
+                     src.long_name,
+                     src.last_seen,
+                     src.snr,
+                     src.rssi,
+                     src.hops_away,
+                     src.channel,
+                     src.next_hop,
+                     src.protocol,
+                     src.role,
+                     src.hw_model);
+    dst.position_valid = src.position_valid != 0;
+    dst.position_has_altitude = src.position_has_altitude != 0;
+    dst.position_latitude_i = src.position_latitude_i;
+    dst.position_longitude_i = src.position_longitude_i;
+    dst.position_altitude = src.position_altitude;
+    dst.position_timestamp = src.position_timestamp;
+    dst.position_precision_bits = src.position_precision_bits;
+    dst.position_pdop = src.position_pdop;
+    dst.position_hdop = src.position_hdop;
+    dst.position_vdop = src.position_vdop;
+    dst.position_gps_accuracy_mm = src.position_gps_accuracy_mm;
 }
 
 } // namespace
@@ -70,6 +174,11 @@ void copyFromPersisted(NodeEntry& dst, const PersistedNodeEntry& src)
 NodeStoreCore::NodeStoreCore(INodeBlobStore& blob_store)
     : blob_store_(blob_store)
 {
+}
+
+void NodeStoreCore::setProtectedNodeChecker(std::function<bool(uint32_t)> checker)
+{
+    protected_node_checker_ = std::move(checker);
 }
 
 void NodeStoreCore::begin()
@@ -137,7 +246,11 @@ void NodeStoreCore::upsert(uint32_t node_id, const char* short_name, const char*
 
     if (entries_.size() >= kMaxNodes)
     {
-        entries_.erase(entries_.begin());
+        const size_t eviction_index = selectEvictionIndex();
+        if (eviction_index < entries_.size())
+        {
+            entries_.erase(entries_.begin() + static_cast<long>(eviction_index));
+        }
     }
 
     NodeEntry entry{};
@@ -187,7 +300,11 @@ void NodeStoreCore::updateProtocol(uint32_t node_id, uint8_t protocol, uint32_t 
 
     if (entries_.size() >= kMaxNodes)
     {
-        entries_.erase(entries_.begin());
+        const size_t eviction_index = selectEvictionIndex();
+        if (eviction_index < entries_.size())
+        {
+            entries_.erase(entries_.begin() + static_cast<long>(eviction_index));
+        }
     }
 
     NodeEntry entry{};
@@ -204,6 +321,138 @@ void NodeStoreCore::updateProtocol(uint32_t node_id, uint8_t protocol, uint32_t 
 
     dirty_ = true;
     maybeSave();
+}
+
+void NodeStoreCore::updatePosition(uint32_t node_id, const NodePosition& position)
+{
+    if (node_id == 0)
+    {
+        return;
+    }
+
+    for (auto& entry : entries_)
+    {
+        if (entry.node_id != node_id)
+        {
+            continue;
+        }
+
+        entry.position_valid = position.valid;
+        entry.position_latitude_i = position.latitude_i;
+        entry.position_longitude_i = position.longitude_i;
+        entry.position_has_altitude = position.has_altitude;
+        entry.position_altitude = position.altitude;
+        entry.position_timestamp = position.timestamp;
+        entry.position_precision_bits = position.precision_bits;
+        entry.position_pdop = position.pdop;
+        entry.position_hdop = position.hdop;
+        entry.position_vdop = position.vdop;
+        entry.position_gps_accuracy_mm = position.gps_accuracy_mm;
+        dirty_ = true;
+        maybeSave();
+        return;
+    }
+
+    if (entries_.size() >= kMaxNodes)
+    {
+        const size_t eviction_index = selectEvictionIndex();
+        if (eviction_index < entries_.size())
+        {
+            entries_.erase(entries_.begin() + static_cast<long>(eviction_index));
+        }
+    }
+
+    NodeEntry entry{};
+    entry.node_id = node_id;
+    entry.snr = std::numeric_limits<float>::quiet_NaN();
+    entry.rssi = std::numeric_limits<float>::quiet_NaN();
+    entry.hops_away = 0xFF;
+    entry.channel = 0xFF;
+    entry.next_hop = 0;
+    entry.protocol = 0;
+    entry.role = kNodeRoleUnknown;
+    entry.hw_model = 0;
+    entry.position_valid = position.valid;
+    entry.position_latitude_i = position.latitude_i;
+    entry.position_longitude_i = position.longitude_i;
+    entry.position_has_altitude = position.has_altitude;
+    entry.position_altitude = position.altitude;
+    entry.position_timestamp = position.timestamp;
+    entry.position_precision_bits = position.precision_bits;
+    entry.position_pdop = position.pdop;
+    entry.position_hdop = position.hdop;
+    entry.position_vdop = position.vdop;
+    entry.position_gps_accuracy_mm = position.gps_accuracy_mm;
+    entries_.push_back(entry);
+    dirty_ = true;
+    maybeSave();
+}
+
+bool NodeStoreCore::setNextHop(uint32_t node_id, uint8_t next_hop, uint32_t now_secs)
+{
+    if (node_id == 0)
+    {
+        return false;
+    }
+
+    for (auto& entry : entries_)
+    {
+        if (entry.node_id != node_id)
+        {
+            continue;
+        }
+
+        if (entry.next_hop == next_hop)
+        {
+            return true;
+        }
+
+        entry.next_hop = next_hop;
+        if (now_secs != 0)
+        {
+            entry.last_seen = now_secs;
+        }
+        dirty_ = true;
+        maybeSave();
+        return true;
+    }
+
+    if (entries_.size() >= kMaxNodes)
+    {
+        const size_t eviction_index = selectEvictionIndex();
+        if (eviction_index < entries_.size())
+        {
+            entries_.erase(entries_.begin() + static_cast<long>(eviction_index));
+        }
+    }
+
+    NodeEntry entry{};
+    entry.node_id = node_id;
+    entry.last_seen = now_secs;
+    entry.snr = std::numeric_limits<float>::quiet_NaN();
+    entry.rssi = std::numeric_limits<float>::quiet_NaN();
+    entry.hops_away = 0xFF;
+    entry.channel = 0xFF;
+    entry.next_hop = next_hop;
+    entry.protocol = 0;
+    entry.role = kNodeRoleUnknown;
+    entry.hw_model = 0;
+    entries_.push_back(entry);
+    dirty_ = true;
+    maybeSave();
+    return true;
+}
+
+uint8_t NodeStoreCore::getNextHop(uint32_t node_id) const
+{
+    for (const auto& entry : entries_)
+    {
+        if (entry.node_id == node_id)
+        {
+            return entry.next_hop;
+        }
+    }
+    return 0;
 }
 
 bool NodeStoreCore::remove(uint32_t node_id)
@@ -296,12 +545,15 @@ bool NodeStoreCore::decodeEntries(const uint8_t* data, size_t len)
         return true;
     }
 
-    if ((len % kSerializedEntrySize) != 0)
+    const bool is_v7_blob = (len % kSerializedEntrySize) == 0;
+    const bool is_v6_blob = (len % kLegacySerializedEntrySize) == 0;
+    if (!is_v7_blob && !is_v6_blob)
     {
         return false;
     }
 
-    size_t count = len / kSerializedEntrySize;
+    const size_t entry_size = is_v7_blob ? kSerializedEntrySize : kLegacySerializedEntrySize;
+    size_t count = len / entry_size;
     if (count > kMaxNodes)
     {
         count = kMaxNodes;
@@ -309,12 +561,25 @@ bool NodeStoreCore::decodeEntries(const uint8_t* data, size_t len)
 
     entries_.clear();
     entries_.reserve(count);
-    auto* persisted = reinterpret_cast<const PersistedNodeEntry*>(data);
-    for (size_t index = 0; index < count; ++index)
+    if (is_v7_blob)
     {
-        NodeEntry entry{};
-        copyFromPersisted(entry, persisted[index]);
-        entries_.push_back(entry);
+        auto* persisted = reinterpret_cast<const PersistedNodeEntryV7*>(data);
+        for (size_t index = 0; index < count; ++index)
+        {
+            NodeEntry entry{};
+            copyFromPersisted(entry, persisted[index]);
+            entries_.push_back(entry);
+        }
+    }
+    else
+    {
+        auto* persisted = reinterpret_cast<const PersistedNodeEntryV6*>(data);
+        for (size_t index = 0; index < count; ++index)
+        {
+            NodeEntry entry{};
+            copyFromPersisted(entry, persisted[index]);
+            entries_.push_back(entry);
+        }
     }
     return true;
 }
@@ -327,13 +592,13 @@ void NodeStoreCore::encodeEntries(std::vector<uint8_t>& out) const
         return;
     }
 
-    std::vector<PersistedNodeEntry> persisted(entries_.size());
+    std::vector<PersistedNodeEntryV7> persisted(entries_.size());
     for (size_t index = 0; index < entries_.size(); ++index)
     {
         copyIntoPersisted(persisted[index], entries_[index]);
     }
 
-    out.resize(persisted.size() * sizeof(PersistedNodeEntry));
+    out.resize(persisted.size() * sizeof(PersistedNodeEntryV7));
     memcpy(out.data(), persisted.data(), out.size());
 }
 
@@ -349,6 +614,47 @@ void NodeStoreCore::maybeSave()
     {
         saveEntries();
     }
+}
+
+size_t NodeStoreCore::selectEvictionIndex() const
+{
+    if (entries_.empty())
+    {
+        return 0;
+    }
+
+    auto is_protected = [this](uint32_t node_id) -> bool
+    {
+        return protected_node_checker_ ? protected_node_checker_(node_id) : false;
+    };
+
+    size_t oldest_unprotected_index = entries_.size();
+    uint32_t oldest_unprotected_seen = std::numeric_limits<uint32_t>::max();
+    size_t oldest_any_index = 0;
+    uint32_t oldest_any_seen = std::numeric_limits<uint32_t>::max();
+
+    for (size_t index = 0; index < entries_.size(); ++index)
+    {
+        const NodeEntry& entry = entries_[index];
+        if (entry.last_seen < oldest_any_seen)
+        {
+            oldest_any_seen = entry.last_seen;
+            oldest_any_index = index;
+        }
+
+        if (is_protected(entry.node_id))
+        {
+            continue;
+        }
+
+        if (entry.last_seen < oldest_unprotected_seen)
+        {
+            oldest_unprotected_seen = entry.last_seen;
+            oldest_unprotected_index = index;
+        }
+    }
+
+    return (oldest_unprotected_index < entries_.size()) ? oldest_unprotected_index : oldest_any_index;
 }
 
 } // namespace contacts

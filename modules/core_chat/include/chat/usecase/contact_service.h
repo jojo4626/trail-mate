@@ -13,7 +13,6 @@
 #include "../ports/i_contact_store.h"
 #include "../ports/i_node_store.h"
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace chat
@@ -129,10 +128,11 @@ class ContactService
     mutable std::vector<NodeInfo> cached_nodes_; // Cache for getContacts/getNearby
     mutable uint32_t cache_timestamp_;
     static constexpr uint32_t kCacheTimeoutMs = 1000; // 1 second cache
-    mutable std::unordered_map<uint32_t, NodePosition> positions_;
 
     void invalidateCache() const;
     void buildCache() const;
+    bool ensureNodeExistsForContact(uint32_t node_id);
+    bool hasNodeEntry(uint32_t node_id) const;
     bool isNodeVisible(uint32_t last_seen) const;
     std::string formatTimeStatus(uint32_t last_seen) const;
 };
