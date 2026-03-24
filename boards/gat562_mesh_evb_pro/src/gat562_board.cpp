@@ -14,10 +14,10 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdlib>
 #include <cmath>
-#include <cstring>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
 
 namespace boards::gat562_mesh_evb_pro

@@ -1,17 +1,17 @@
 #pragma once
 
-#include "app/app_facades.h"
 #include "app/app_config.h"
+#include "app/app_facades.h"
 #include "chat/domain/contact_types.h"
 #include "chat/usecase/chat_service.h"
 #include "platform/ui/device_runtime.h"
 #include "platform/ui/gps_runtime.h"
 #include "ui/mono_128x64/text_renderer.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <ctime>
-#include <array>
 
 namespace ui::mono_128x64
 {

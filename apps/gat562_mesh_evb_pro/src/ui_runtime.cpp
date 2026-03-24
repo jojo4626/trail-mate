@@ -18,9 +18,9 @@ namespace apps::gat562_mesh_evb_pro::ui_runtime
 {
 namespace
 {
+using Adafruit_LittleFS_Namespace::File;
 using boards::gat562_mesh_evb_pro::BoardInputEvent;
 using boards::gat562_mesh_evb_pro::BoardInputKey;
-using Adafruit_LittleFS_Namespace::File;
 constexpr uint32_t kProbeHoldMs = 900;
 constexpr uint32_t kGat562TotalRamBytes = 248832U;
 constexpr uint32_t kGat562FsTotalBytes = 7U * 4096U;

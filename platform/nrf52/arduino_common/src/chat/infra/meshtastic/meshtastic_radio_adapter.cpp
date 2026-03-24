@@ -9,12 +9,12 @@
 #include "chat/runtime/meshtastic_self_announcement_core.h"
 #include "chat/runtime/self_identity_policy.h"
 #include "meshtastic/mqtt.pb.h"
-#include "platform/ui/gps_runtime.h"
-#include "platform/ui/settings_store.h"
 #include "platform/nrf52/arduino_common/chat/infra/radio_packet_io.h"
 #include "platform/nrf52/arduino_common/device_identity.h"
-#include "sys/clock.h"
 #include "platform/nrf52/arduino_common/sys/event_bus.h"
+#include "platform/ui/gps_runtime.h"
+#include "platform/ui/settings_store.h"
+#include "sys/clock.h"
 
 #include <Arduino.h>
 #include <Curve25519.h>

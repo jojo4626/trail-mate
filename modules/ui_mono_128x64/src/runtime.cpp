@@ -2236,8 +2236,9 @@ void Runtime::renderNodeList()
             drawTextClipped(kBrgX, row_y, kBrgW, "-", selected_row);
         }
 
-        const int bars = std::strcmp(sig, "STR") == 0 ? 3 : std::strcmp(sig, "OK") == 0 ? 2 : std::strcmp(sig, "WEAK") == 0 ? 1
-                                                                                                                   : 0;
+        const int bars = std::strcmp(sig, "STR") == 0 ? 3 : std::strcmp(sig, "OK") == 0 ? 2
+                                                        : std::strcmp(sig, "WEAK") == 0 ? 1
+                                                                                        : 0;
         for (int bar = 0; bar < 3; ++bar)
         {
             if (bar >= bars)
@@ -2386,9 +2387,9 @@ void Runtime::renderNodeCompass()
     char age_buf[12] = {};
     formatElapsedShort(host_.utc_now_fn ? host_.utc_now_fn() : 0, node->last_seen, age_buf, sizeof(age_buf));
     char footer[24] = {};
-    const char* proto = node->protocol == chat::contacts::NodeProtocolType::MeshCore ? "MC"
+    const char* proto = node->protocol == chat::contacts::NodeProtocolType::MeshCore     ? "MC"
                         : node->protocol == chat::contacts::NodeProtocolType::Meshtastic ? "MT"
-                                                                                           : "?";
+                                                                                         : "?";
     if (node->hops_away == 0xFF)
     {
         std::snprintf(footer, sizeof(footer), "%s  %s", proto, age_buf);
