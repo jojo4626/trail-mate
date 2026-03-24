@@ -468,6 +468,25 @@ const char* bearingCardinal(double bearing_deg)
     return kDirs[index];
 }
 
+const char* bearingOctant(double bearing_deg)
+{
+    static constexpr const char* kDirs[] = {
+        "N", "NE", "E", "SE", "S", "SW", "W", "NW"};
+    const int index = static_cast<int>((normalizeBearingDeg(bearing_deg) + 22.5) / 45.0) % 8;
+    return kDirs[index];
+}
+
+void formatBearingCompact(char* out, size_t out_len, double bearing_deg)
+{
+    if (!out || out_len == 0)
+    {
+        return;
+    }
+
+    const int rounded_deg = static_cast<int>(std::lround(normalizeBearingDeg(bearing_deg))) % 360;
+    std::snprintf(out, out_len, "%s%d", bearingOctant(bearing_deg), rounded_deg);
+}
+
 void drawBearingArrow(MonoDisplay& display, int center_x, int center_y, double bearing_deg, bool selected_row)
 {
     const bool on = !selected_row;
@@ -517,6 +536,88 @@ void drawBearingArrow(MonoDisplay& display, int center_x, int center_y, double b
         display.drawPixel(center_x - 2, center_y - 1, on);
         break;
     }
+}
+
+void drawLine(MonoDisplay& display, int x0, int y0, int x1, int y1, bool on = true)
+{
+    int dx = std::abs(x1 - x0);
+    const int sx = (x0 < x1) ? 1 : -1;
+    int dy = -std::abs(y1 - y0);
+    const int sy = (y0 < y1) ? 1 : -1;
+    int err = dx + dy;
+
+    while (true)
+    {
+        display.drawPixel(x0, y0, on);
+        if (x0 == x1 && y0 == y1)
+        {
+            break;
+        }
+        const int e2 = err * 2;
+        if (e2 >= dy)
+        {
+            err += dy;
+            x0 += sx;
+        }
+        if (e2 <= dx)
+        {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+void drawCircle(MonoDisplay& display, int cx, int cy, int radius, bool on = true)
+{
+    if (radius <= 0)
+    {
+        return;
+    }
+
+    int x = radius;
+    int y = 0;
+    int err = 0;
+    while (x >= y)
+    {
+        display.drawPixel(cx + x, cy + y, on);
+        display.drawPixel(cx + y, cy + x, on);
+        display.drawPixel(cx - y, cy + x, on);
+        display.drawPixel(cx - x, cy + y, on);
+        display.drawPixel(cx - x, cy - y, on);
+        display.drawPixel(cx - y, cy - x, on);
+        display.drawPixel(cx + y, cy - x, on);
+        display.drawPixel(cx + x, cy - y, on);
+        ++y;
+        if (err <= 0)
+        {
+            err += (2 * y) + 1;
+        }
+        if (err > 0)
+        {
+            --x;
+            err -= (2 * x) + 1;
+        }
+    }
+}
+
+void drawCompassArrow(MonoDisplay& display, int cx, int cy, double bearing_deg, int length, bool on = true)
+{
+    const double angle = degToRad(normalizeBearingDeg(bearing_deg) - 90.0);
+    const int tip_x = cx + static_cast<int>(std::lround(std::cos(angle) * length));
+    const int tip_y = cy + static_cast<int>(std::lround(std::sin(angle) * length));
+    const int tail_x = cx - static_cast<int>(std::lround(std::cos(angle) * (length / 4.0)));
+    const int tail_y = cy - static_cast<int>(std::lround(std::sin(angle) * (length / 4.0)));
+    const double left_angle = angle + degToRad(150.0);
+    const double right_angle = angle - degToRad(150.0);
+    const int wing = std::max(3, length / 3);
+    const int left_x = tip_x + static_cast<int>(std::lround(std::cos(left_angle) * wing));
+    const int left_y = tip_y + static_cast<int>(std::lround(std::sin(left_angle) * wing));
+    const int right_x = tip_x + static_cast<int>(std::lround(std::cos(right_angle) * wing));
+    const int right_y = tip_y + static_cast<int>(std::lround(std::sin(right_angle) * wing));
+
+    drawLine(display, tail_x, tail_y, tip_x, tip_y, on);
+    drawLine(display, tip_x, tip_y, left_x, left_y, on);
+    drawLine(display, tip_x, tip_y, right_x, right_y, on);
 }
 
 void drawFrame(MonoDisplay& display, int x, int y, int w, int h, bool filled = false)
@@ -1100,6 +1201,7 @@ void Runtime::tick(InputAction action)
         return;
     }
 
+    expireTransientPopup();
     ensureBootExit();
     ensureSleepTimeout(action);
     handleInput(action);
@@ -1334,6 +1436,14 @@ void Runtime::handleInput(InputAction action)
                  action == InputAction::Right || action == InputAction::Select || action == InputAction::Primary)
         {
             enterPage(Page::NodeList);
+        }
+        break;
+
+    case Page::NodeCompass:
+        if (action == InputAction::Left || action == InputAction::Back ||
+            action == InputAction::Right || action == InputAction::Select || action == InputAction::Primary)
+        {
+            enterPage(Page::NodeActionMenu);
         }
         break;
 
@@ -1754,6 +1864,9 @@ void Runtime::render()
     case Page::NodeInfo:
         renderNodeInfo();
         break;
+    case Page::NodeCompass:
+        renderNodeCompass();
+        break;
     case Page::Conversation:
         renderConversation();
         break;
@@ -1792,6 +1905,11 @@ void Runtime::render()
     if (setting_popup_active_)
     {
         renderSettingPopup();
+    }
+
+    if (transient_popup_active_)
+    {
+        renderTransientPopup();
     }
 
     ble::BlePairingStatus ble_status{};
@@ -2025,22 +2143,22 @@ void Runtime::renderNodeList()
     const int line_h = text_renderer_.lineHeight();
     constexpr int kRowStartY = 10;
     constexpr int kNameX = 0;
-    constexpr int kNameW = 24;
-    constexpr int kAgeX = 26;
-    constexpr int kAgeW = 16;
-    constexpr int kDistX = 44;
-    constexpr int kDistW = 24;
-    constexpr int kBrgX = 70;
-    constexpr int kBrgW = 16;
-    constexpr int kHopsX = 88;
-    constexpr int kHopsW = 18;
-    constexpr int kBarsX = 114;
+    constexpr int kNameW = 22;
+    constexpr int kAgeX = 24;
+    constexpr int kAgeW = 14;
+    constexpr int kDistX = 40;
+    constexpr int kDistW = 18;
+    constexpr int kBrgX = 60;
+    constexpr int kBrgW = 28;
+    constexpr int kHopsX = 90;
+    constexpr int kHopsW = 12;
+    constexpr int kBarsX = 106;
 
     display_.fillRect(0, kHeaderY, display_.width(), line_h + 1, true);
     drawTextClipped(kAgeX, kHeaderY, kAgeW, "AGE", true);
-    drawTextClipped(kDistX, kHeaderY, kDistW, "DIST", true);
+    drawTextClipped(kDistX, kHeaderY, kDistW, "DST", true);
     drawTextClipped(kBrgX, kHeaderY, kBrgW, "BRG", true);
-    drawTextClipped(kHopsX, kHeaderY, kHopsW, "HOPS", true);
+    drawTextClipped(kHopsX, kHeaderY, kHopsW, "HP", true);
     if (node_count_ == 0)
     {
         text_renderer_.drawText(display_, 0, kRowStartY, "NO NODES");
@@ -2084,13 +2202,12 @@ void Runtime::renderNodeList()
         }
 
         bool has_bearing = false;
-        double relative_bearing_deg = 0.0;
+        double bearing_deg = 0.0;
         if (gps.valid && node.position.valid)
         {
             const double node_lat = static_cast<double>(node.position.latitude_i) / 1e7;
             const double node_lon = static_cast<double>(node.position.longitude_i) / 1e7;
-            const double brg_deg = bearingDegrees(gps.lat, gps.lng, node_lat, node_lon);
-            relative_bearing_deg = gps.has_course ? normalizeBearingDeg(brg_deg - gps.course_deg) : brg_deg;
+            bearing_deg = bearingDegrees(gps.lat, gps.lng, node_lat, node_lon);
             has_bearing = true;
         }
 
@@ -2110,7 +2227,9 @@ void Runtime::renderNodeList()
         drawTextClipped(kHopsX, row_y, kHopsW, hops_buf, selected_row);
         if (has_bearing)
         {
-            drawBearingArrow(display_, kBrgX + (kBrgW / 2), row_y + (line_h / 2), relative_bearing_deg, selected_row);
+            char bearing_buf[10] = {};
+            formatBearingCompact(bearing_buf, sizeof(bearing_buf), bearing_deg);
+            drawTextClipped(kBrgX, row_y, kBrgW, bearing_buf, selected_row);
         }
         else
         {
@@ -2159,6 +2278,129 @@ void Runtime::renderNodeInfo()
     {
         drawTextClipped(0, 10 + static_cast<int>(i * line_h), display_.width(), node_info_lines_[start + i], false);
     }
+}
+
+void Runtime::renderNodeCompass()
+{
+    const chat::contacts::NodeInfo* node = selectedNode();
+    char right[12] = {};
+    if (node != nullptr)
+    {
+        std::snprintf(right, sizeof(right), "%04lX",
+                      static_cast<unsigned long>(node->node_id & 0xFFFFUL));
+    }
+    drawTitleBar("COMPASS", right[0] != '\0' ? right : nullptr);
+
+    if (node == nullptr)
+    {
+        text_renderer_.drawText(display_, 0, 18, "NO NODE");
+        return;
+    }
+
+    const char* title_name = node->display_name.empty()
+                                 ? (node->short_name[0] != '\0' ? node->short_name : "NODE")
+                                 : node->display_name.c_str();
+    drawTextClipped(0, 10, display_.width(), title_name);
+
+    const auto gps = host_.gps_data_fn ? host_.gps_data_fn() : platform::ui::gps::GpsState{};
+    if (!gps.valid)
+    {
+        text_renderer_.drawText(display_, 0, 26, "GPS UNAVAILABLE");
+        text_renderer_.drawText(display_, 0, 36, "NEED LOCAL FIX");
+        return;
+    }
+    if (!node->position.valid)
+    {
+        text_renderer_.drawText(display_, 0, 26, "NODE POSITION");
+        text_renderer_.drawText(display_, 0, 36, "UNAVAILABLE");
+        return;
+    }
+
+    const double node_lat = static_cast<double>(node->position.latitude_i) / 1e7;
+    const double node_lon = static_cast<double>(node->position.longitude_i) / 1e7;
+    const double dist_m = haversineMeters(gps.lat, gps.lng, node_lat, node_lon);
+    const double abs_bearing_deg = bearingDegrees(gps.lat, gps.lng, node_lat, node_lon);
+    const double rel_bearing_deg = gps.has_course ? normalizeBearingDeg(abs_bearing_deg - gps.course_deg) : abs_bearing_deg;
+
+    constexpr int kCenterX = 20;
+    constexpr int kCenterY = 39;
+    constexpr int kRadius = 17;
+    constexpr int kInfoX = 42;
+    constexpr int kInfoW = 86;
+    drawCircle(display_, kCenterX, kCenterY, kRadius);
+    display_.drawPixel(kCenterX, kCenterY, true);
+    text_renderer_.drawText(display_, kCenterX - 2, kCenterY - kRadius - 7, "N");
+    text_renderer_.drawText(display_, kCenterX - 2, kCenterY + kRadius + 1, "S");
+    text_renderer_.drawText(display_, kCenterX - kRadius - 7, kCenterY - 3, "W");
+    text_renderer_.drawText(display_, kCenterX + kRadius + 3, kCenterY - 3, "E");
+    display_.drawPixel(kCenterX, kCenterY - kRadius + 3, true);
+    display_.drawPixel(kCenterX - 1, kCenterY - kRadius + 4, true);
+    display_.drawPixel(kCenterX + 1, kCenterY - kRadius + 4, true);
+
+    if (gps.has_course)
+    {
+        drawCompassArrow(display_, kCenterX, kCenterY, rel_bearing_deg, kRadius - 4, true);
+    }
+    else
+    {
+        drawCompassArrow(display_, kCenterX, kCenterY, abs_bearing_deg, kRadius - 4, true);
+    }
+
+    char line[24] = {};
+    if (dist_m < 1000.0)
+    {
+        std::snprintf(line, sizeof(line), "DST %.0fm", dist_m);
+    }
+    else
+    {
+        std::snprintf(line, sizeof(line), "DST %.2fkm", dist_m / 1000.0);
+    }
+    drawTextClipped(kInfoX, 18, kInfoW, line);
+
+    std::snprintf(line, sizeof(line), "BRG %s %.0f", bearingCardinal(abs_bearing_deg), abs_bearing_deg);
+    drawTextClipped(kInfoX, 26, kInfoW, line);
+
+    if (gps.has_course)
+    {
+        std::snprintf(line, sizeof(line), "HDG %.0f", gps.course_deg);
+        drawTextClipped(kInfoX, 34, kInfoW, line);
+        std::snprintf(line, sizeof(line), "REL %.0f", rel_bearing_deg);
+        drawTextClipped(kInfoX, 42, kInfoW, line);
+    }
+    else
+    {
+        drawTextClipped(kInfoX, 34, kInfoW, "HDG N/A");
+        drawTextClipped(kInfoX, 42, kInfoW, "REL N/A");
+    }
+
+    if (node->position.has_altitude)
+    {
+        std::snprintf(line, sizeof(line), "ALT %ldm", static_cast<long>(node->position.altitude));
+    }
+    else
+    {
+        std::snprintf(line, sizeof(line), "ALT -");
+    }
+    drawTextClipped(kInfoX, 50, kInfoW, line);
+
+    char age_buf[12] = {};
+    formatElapsedShort(host_.utc_now_fn ? host_.utc_now_fn() : 0, node->last_seen, age_buf, sizeof(age_buf));
+    char footer[24] = {};
+    const char* proto = node->protocol == chat::contacts::NodeProtocolType::MeshCore ? "MC"
+                        : node->protocol == chat::contacts::NodeProtocolType::Meshtastic ? "MT"
+                                                                                           : "?";
+    if (node->hops_away == 0xFF)
+    {
+        std::snprintf(footer, sizeof(footer), "%s  %s", proto, age_buf);
+    }
+    else
+    {
+        std::snprintf(footer, sizeof(footer), "%s H%u %s",
+                      proto,
+                      static_cast<unsigned>(node->hops_away),
+                      age_buf);
+    }
+    drawTextClipped(kInfoX, 58, kInfoW, footer);
 }
 
 void Runtime::renderNodeActionMenu()
@@ -2615,6 +2857,24 @@ void Runtime::renderSettingPopup()
     }
 }
 
+void Runtime::renderTransientPopup()
+{
+    constexpr int kBoxX = 14;
+    constexpr int kBoxY = 18;
+    constexpr int kBoxW = 100;
+    constexpr int kBoxH = 28;
+    display_.fillRect(kBoxX, kBoxY, kBoxW, kBoxH, false);
+    drawFrame(display_, kBoxX, kBoxY, kBoxW, kBoxH);
+    if (transient_popup_title_[0] != '\0')
+    {
+        drawTextClipped(kBoxX + 4, kBoxY + 4, kBoxW - 8, transient_popup_title_);
+    }
+    if (transient_popup_message_[0] != '\0')
+    {
+        drawTextClipped(kBoxX + 4, kBoxY + 15, kBoxW - 8, transient_popup_message_);
+    }
+}
+
 void Runtime::renderInfoPage()
 {
     char lines[24][40] = {};
@@ -2924,8 +3184,28 @@ void Runtime::renderGnssPage()
         return;
     }
 
-    display_.fillRect(0, 10, display_.width(), line_h, true);
-    text_renderer_.drawText(display_, 0, 10, "SAT ID USE SNR ELV AZI", true);
+    constexpr int kSatHeaderY = 10;
+    constexpr int kSatRowY = 20;
+    constexpr int kSysX = 0;
+    constexpr int kSysW = 16;
+    constexpr int kIdX = 18;
+    constexpr int kIdW = 14;
+    constexpr int kUseX = 34;
+    constexpr int kUseW = 18;
+    constexpr int kSnrX = 54;
+    constexpr int kSnrW = 22;
+    constexpr int kElvX = 78;
+    constexpr int kElvW = 20;
+    constexpr int kAziX = 100;
+    constexpr int kAziW = 28;
+
+    display_.fillRect(0, kSatHeaderY, display_.width(), line_h, true);
+    drawTextClipped(kSysX, kSatHeaderY, kSysW, "SAT", true);
+    drawTextClipped(kIdX, kSatHeaderY, kIdW, "ID", true);
+    drawTextClipped(kUseX, kSatHeaderY, kUseW, "USE", true);
+    drawTextClipped(kSnrX, kSatHeaderY, kSnrW, "SNR", true);
+    drawTextClipped(kElvX, kSatHeaderY, kElvW, "ELV", true);
+    drawTextClipped(kAziX, kSatHeaderY, kAziW, "AZI", true);
     const size_t sat_page = gnss_page_index_ - summary_pages;
     const size_t sat_start = sat_page * kGnssSatPageSize;
     const size_t sat_visible = std::min(kGnssSatPageSize, sat_count - std::min(sat_start, sat_count));
@@ -2938,17 +3218,26 @@ void Runtime::renderGnssPage()
     for (size_t i = 0; i < sat_visible; ++i)
     {
         const auto& sat = sats[sat_start + i];
-        char line[40] = {};
-        std::snprintf(line,
-                      sizeof(line),
-                      "%-3s %02u  %c  %03d %02u  %03u",
-                      gnssSystemLabel(sat.sys),
-                      static_cast<unsigned>(sat.id),
-                      sat.used ? 'Y' : '-',
-                      static_cast<int>(sat.snr >= 0 ? sat.snr : 0),
-                      static_cast<unsigned>(sat.elevation),
-                      static_cast<unsigned>(sat.azimuth));
-        text_renderer_.drawText(display_, 0, 20 + static_cast<int>(i * line_h), line);
+        const int row_y = kSatRowY + static_cast<int>(i * line_h);
+        char cell[12] = {};
+
+        std::snprintf(cell, sizeof(cell), "%s", gnssSystemLabel(sat.sys));
+        drawTextClipped(kSysX, row_y, kSysW, cell);
+
+        std::snprintf(cell, sizeof(cell), "%02u", static_cast<unsigned>(sat.id));
+        drawTextClipped(kIdX, row_y, kIdW, cell);
+
+        std::snprintf(cell, sizeof(cell), "%c", sat.used ? 'Y' : '-');
+        drawTextClipped(kUseX, row_y, kUseW, cell);
+
+        std::snprintf(cell, sizeof(cell), "%03d", static_cast<int>(sat.snr >= 0 ? sat.snr : 0));
+        drawTextClipped(kSnrX, row_y, kSnrW, cell);
+
+        std::snprintf(cell, sizeof(cell), "%02u", static_cast<unsigned>(sat.elevation));
+        drawTextClipped(kElvX, row_y, kElvW, cell);
+
+        std::snprintf(cell, sizeof(cell), "%03u", static_cast<unsigned>(sat.azimuth));
+        drawTextClipped(kAziX, row_y, kAziW, cell);
     }
 }
 
@@ -2979,6 +3268,10 @@ void Runtime::enterPage(Page page)
     {
         node_info_scroll_ = 0;
         buildNodeInfo();
+    }
+    else if (page == Page::NodeCompass)
+    {
+        node_action_index_ = std::min(node_action_index_, arrayCount(kNodeActionItems) - 1U);
     }
     else if (page == Page::Conversation)
     {
@@ -4575,6 +4868,30 @@ void Runtime::executeActionPageItem(size_t index)
     }
 }
 
+void Runtime::showTransientPopup(const char* title, const char* message, uint32_t duration_ms)
+{
+    copyText(transient_popup_title_, title ? title : "");
+    copyText(transient_popup_message_, message ? message : "");
+    transient_popup_active_ = true;
+    transient_popup_expires_ms_ = nowMs() + duration_ms;
+}
+
+void Runtime::expireTransientPopup()
+{
+    if (!transient_popup_active_)
+    {
+        return;
+    }
+    const uint32_t now = nowMs();
+    if (now >= transient_popup_expires_ms_)
+    {
+        transient_popup_active_ = false;
+        transient_popup_title_[0] = '\0';
+        transient_popup_message_[0] = '\0';
+        transient_popup_expires_ms_ = 0;
+    }
+}
+
 bool Runtime::editUsesHexCharset() const
 {
     return false;
@@ -4620,9 +4937,10 @@ void Runtime::executeNodeAction()
     auto* mesh = app() ? app()->getMeshAdapter() : nullptr;
     auto* contacts = app() ? &app()->getContactService() : nullptr;
     const chat::contacts::NodeInfo* node = selectedNode();
-    if (!node || !mesh || !contacts)
+    if (!node)
     {
         appendBootLog("node action na");
+        showTransientPopup("NODE", "ACTION UNAVAILABLE");
         return;
     }
 
@@ -4634,9 +4952,16 @@ void Runtime::executeNodeAction()
         return;
     case 1:
     {
+        if (!contacts)
+        {
+            appendBootLog("contact svc na");
+            showTransientPopup("ADD CONTACT", "UNAVAILABLE");
+            return;
+        }
         if (node->is_contact)
         {
             appendBootLog("contact exists");
+            showTransientPopup("ADD CONTACT", "ALREADY EXISTS");
             return;
         }
 
@@ -4654,23 +4979,32 @@ void Runtime::executeNodeAction()
         if (contacts->addContact(node->node_id, nickname))
         {
             appendBootLog("contact added");
+            showTransientPopup("ADD CONTACT", "SUCCESS");
             rebuildNodeList();
             enterPage(Page::NodeList);
         }
         else
         {
             appendBootLog("contact failed");
+            showTransientPopup("ADD CONTACT", "FAILED");
         }
         return;
     }
     case 2:
     {
+        if (!mesh)
+        {
+            appendBootLog("trace na");
+            showTransientPopup("TRACE ROUTE", "UNAVAILABLE");
+            return;
+        }
         meshtastic_RouteDiscovery route = meshtastic_RouteDiscovery_init_zero;
         uint8_t route_buf[96] = {};
         pb_ostream_t stream = pb_ostream_from_buffer(route_buf, sizeof(route_buf));
         if (!pb_encode(&stream, meshtastic_RouteDiscovery_fields, &route))
         {
             appendBootLog("trace encode err");
+            showTransientPopup("TRACE ROUTE", "ENCODE FAILED");
             return;
         }
 
@@ -4683,34 +5017,61 @@ void Runtime::executeNodeAction()
                                           0,
                                           true);
         appendBootLog(ok ? "trace queued" : "trace failed");
+        showTransientPopup("TRACE ROUTE", ok ? "QUEUED" : "FAILED");
         return;
     }
     case 3:
     {
+        if (!mesh)
+        {
+            appendBootLog("verify na");
+            showTransientPopup("KEY VERIFICATION", "UNAVAILABLE");
+            return;
+        }
         const bool ok = mesh->startKeyVerification(node->node_id);
         appendBootLog(ok ? "verify queued" : "verify failed");
+        showTransientPopup("KEY VERIFICATION", ok ? "QUEUED" : "FAILED");
         return;
     }
     case 4:
-    {
-        const bool ok = mesh->sendAppData(chat::ChannelId::PRIMARY,
-                                          meshtastic_PortNum_POSITION_APP,
-                                          nullptr,
-                                          0,
-                                          node->node_id,
-                                          false,
-                                          0,
-                                          true);
-        appendBootLog(ok ? "pos req queued" : "pos req failed");
+        requestNodePositionExchange();
         return;
-    }
     case 5:
-        node_info_scroll_ = 0;
-        enterPage(Page::NodeInfo);
+        showTransientPopup("OPEN COMPASS", "OPENED");
+        enterPage(Page::NodeCompass);
         return;
     default:
         return;
     }
+}
+
+void Runtime::requestNodePositionExchange()
+{
+    auto* mesh = app() ? app()->getMeshAdapter() : nullptr;
+    const chat::contacts::NodeInfo* node = selectedNode();
+    if (!node)
+    {
+        appendBootLog("pos req node na");
+        showTransientPopup("EXCHANGE POSITION", "NO NODE");
+        return;
+    }
+    if (!mesh)
+    {
+        appendBootLog("pos req na");
+        showTransientPopup("EXCHANGE POSITION", "UNAVAILABLE");
+        return;
+    }
+
+    const bool ok = mesh->sendAppData(chat::ChannelId::PRIMARY,
+                                      meshtastic_PortNum_POSITION_APP,
+                                      nullptr,
+                                      0,
+                                      node->node_id,
+                                      false,
+                                      0,
+                                      true);
+    appendBootLog(ok ? "pos req queued" : "pos req failed");
+    showTransientPopup("EXCHANGE POSITION", ok ? "QUEUED" : "FAILED");
 }
 
 } // namespace ui::mono_128x64

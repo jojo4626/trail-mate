@@ -120,6 +120,7 @@ class Runtime : public chat::ChatService::IncomingTextObserver
         NodeList,
         NodeActionMenu,
         NodeInfo,
+        NodeCompass,
         Conversation,
         MessageMenu,
         MessageInfo,
@@ -150,6 +151,7 @@ class Runtime : public chat::ChatService::IncomingTextObserver
     void renderNodeList();
     void renderNodeActionMenu();
     void renderNodeInfo();
+    void renderNodeCompass();
     void renderConversation();
     void renderMessageMenu();
     void renderMessageInfo();
@@ -161,6 +163,7 @@ class Runtime : public chat::ChatService::IncomingTextObserver
     void renderGnssPage();
     void renderActionPage();
     void renderSettingPopup();
+    void renderTransientPopup();
 
     void enterPage(Page page);
     void openCompose(EditTarget target, const char* seed_text = nullptr);
@@ -214,6 +217,9 @@ class Runtime : public chat::ChatService::IncomingTextObserver
     const chat::ChatMessage* selectedMessage() const;
     const chat::contacts::NodeInfo* selectedNode() const;
     void executeNodeAction();
+    void requestNodePositionExchange();
+    void showTransientPopup(const char* title, const char* message, uint32_t duration_ms = 2000U);
+    void expireTransientPopup();
 
     MonoDisplay& display_;
     TextRenderer text_renderer_;
@@ -247,6 +253,10 @@ class Runtime : public chat::ChatService::IncomingTextObserver
     size_t node_list_index_ = 0;
     size_t node_action_index_ = 0;
     size_t node_info_scroll_ = 0;
+    bool transient_popup_active_ = false;
+    uint32_t transient_popup_expires_ms_ = 0;
+    char transient_popup_title_[24] = {};
+    char transient_popup_message_[32] = {};
     size_t message_index_ = 0;
     uint32_t message_focus_started_ms_ = 0;
     size_t message_menu_index_ = 0;
