@@ -2020,21 +2020,8 @@ enum class ActionMenuCommand : uint8_t
     Add = 5,
     Delete = 6,
     ToggleIgnore = 7,
-    StartKeyVerification = 8,
-    ToggleKeyTrust = 9,
-    Cancel = 10,
+    Cancel = 8,
 };
-
-static bool selected_node_supports_pki()
-{
-    app::IAppFacade& app_ctx = app::appFacade();
-    chat::IMeshAdapter* mesh = app_ctx.getMeshAdapter();
-    if (!mesh)
-    {
-        return false;
-    }
-    return mesh->getCapabilities().supports_pki;
-}
 
 static void toggle_selected_node_ignore()
 {
@@ -2065,69 +2052,6 @@ static void toggle_selected_node_ignore()
     {
         ::ui::SystemNotification::show(ignored ? "Node ignored" : "Node unignored", 1800);
     }
-    contacts_focus_to_list();
-}
-
-static void start_selected_node_key_verification()
-{
-    const auto* node = get_selected_node();
-    app::IAppFacade& app_ctx = app::appFacade();
-    chat::IMeshAdapter* mesh = app_ctx.getMeshAdapter();
-    if (!node || !mesh)
-    {
-        ::ui::SystemNotification::show("Key verify unavailable", 1800);
-        contacts_focus_to_list();
-        return;
-    }
-    if (!mesh->getCapabilities().supports_pki)
-    {
-        ::ui::SystemNotification::show("PKI not supported", 1800);
-        contacts_focus_to_list();
-        return;
-    }
-    if (!node->has_public_key)
-    {
-        const bool requested = mesh->requestNodeInfo(node->node_id, true);
-        ::ui::SystemNotification::show(requested ? "Requesting node info" : "No public key yet", 1800);
-        contacts_focus_to_list();
-        return;
-    }
-
-    const bool ok = mesh->startKeyVerification(node->node_id);
-    ::ui::SystemNotification::show(ok ? "Key verification queued" : "Key verification failed", 2000);
-    contacts_focus_to_list();
-}
-
-static void toggle_selected_node_key_trust()
-{
-    const auto* node = get_selected_node();
-    app::IAppFacade& app_ctx = app::appFacade();
-    chat::IMeshAdapter* mesh = app_ctx.getMeshAdapter();
-    if (!node || !g_contacts_state.contact_service || !mesh)
-    {
-        ::ui::SystemNotification::show("Key trust unavailable", 1800);
-        contacts_focus_to_list();
-        return;
-    }
-    if (!node->has_public_key)
-    {
-        const bool requested = mesh->requestNodeInfo(node->node_id, true);
-        ::ui::SystemNotification::show(requested ? "Requesting node info" : "No public key yet", 1800);
-        contacts_focus_to_list();
-        return;
-    }
-
-    const bool trusted = !node->key_manually_verified;
-    if (!g_contacts_state.contact_service->setNodeKeyManuallyVerified(node->node_id, trusted))
-    {
-        ::ui::SystemNotification::show("Key trust update failed", 1800);
-        contacts_focus_to_list();
-        return;
-    }
-
-    refresh_contacts_data();
-    refresh_ui();
-    ::ui::SystemNotification::show(trusted ? "Key marked trusted" : "Key trust cleared", 1800);
     contacts_focus_to_list();
 }
 
@@ -2198,12 +2122,6 @@ static void on_action_menu_item_clicked(lv_event_t* e)
     case ActionMenuCommand::ToggleIgnore:
         toggle_selected_node_ignore();
         break;
-    case ActionMenuCommand::StartKeyVerification:
-        start_selected_node_key_verification();
-        break;
-    case ActionMenuCommand::ToggleKeyTrust:
-        toggle_selected_node_key_trust();
-        break;
     case ActionMenuCommand::Cancel:
     default:
         contacts_focus_to_list();
@@ -2227,12 +2145,9 @@ static void open_action_menu_modal()
     }
 
     const chat::contacts::NodeInfo* node = get_selected_node();
-    const bool supports_pki = selected_node_supports_pki();
     const bool show_ignore = (node != nullptr) &&
                              (g_contacts_state.current_mode == ContactsMode::Contacts ||
                               g_contacts_state.current_mode == ContactsMode::Nearby);
-    const bool show_key_verify = (node != nullptr) && supports_pki;
-    const bool show_key_trust = (node != nullptr) && node->has_public_key;
 
     int action_count = 2; // Chat + Cancel
     if (g_contacts_state.current_mode == ContactsMode::Contacts)
@@ -2249,14 +2164,6 @@ static void open_action_menu_modal()
         action_count += 1; // Position
     }
     if (show_ignore)
-    {
-        action_count += 1;
-    }
-    if (show_key_verify)
-    {
-        action_count += 1;
-    }
-    if (show_key_trust)
     {
         action_count += 1;
     }
@@ -2363,15 +2270,6 @@ static void open_action_menu_modal()
     {
         add_action(ActionMenuCommand::ToggleIgnore,
                    (node && node->is_ignored) ? "Unignore" : "Ignore");
-    }
-    if (show_key_verify)
-    {
-        add_action(ActionMenuCommand::StartKeyVerification, "Verify Key");
-    }
-    if (show_key_trust)
-    {
-        add_action(ActionMenuCommand::ToggleKeyTrust,
-                   (node && node->key_manually_verified) ? "Clear Key Trust" : "Trust Key");
     }
     add_action(ActionMenuCommand::Cancel, "Cancel");
 

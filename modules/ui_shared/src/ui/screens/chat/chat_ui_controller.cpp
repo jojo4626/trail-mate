@@ -458,27 +458,12 @@ void UiController::onChatEvent(sys::Event* event)
         refreshUnreadCounts(false);
         break;
     }
-
     case sys::EventType::KeyVerificationNumberRequest:
-    {
-        auto* kv_event = static_cast<sys::KeyVerificationNumberRequestEvent*>(event);
-        openKeyVerificationNumberModal(kv_event->node_id, kv_event->nonce);
         break;
-    }
-
     case sys::EventType::KeyVerificationNumberInform:
-    {
-        auto* kv_event = static_cast<sys::KeyVerificationNumberInformEvent*>(event);
-        openKeyVerificationInfoModal(kv_event->node_id, kv_event->security_number);
         break;
-    }
-
     case sys::EventType::KeyVerificationFinal:
-    {
-        auto* kv_event = static_cast<sys::KeyVerificationFinalEvent*>(event);
-        openKeyVerificationFinalModal(kv_event->node_id, kv_event->verification_code, kv_event->is_sender);
         break;
-    }
 
     default:
         break;

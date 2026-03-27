@@ -104,7 +104,7 @@ constexpr const char* kMessageMenuItems[] = {
     "REPLY",
 };
 
-constexpr size_t kNodeActionItemCount = 8;
+constexpr size_t kNodeActionItemCount = 7;
 
 constexpr const char* kWeekdays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 constexpr const char* kComposeCharset =
@@ -5020,34 +5020,30 @@ const chat::contacts::NodeInfo* Runtime::selectedNode() const
 
 size_t Runtime::nodeActionCount() const
 {
-    return kNodeActionItemCount;
+    const bool meshtastic_mode = app() && app()->getConfig().mesh_protocol != chat::MeshProtocol::MeshCore;
+    return meshtastic_mode ? kNodeActionItemCount : (kNodeActionItemCount - 1U);
 }
 
 const char* Runtime::nodeActionLabel(size_t index) const
 {
     const chat::contacts::NodeInfo* node = selectedNode();
+    const bool meshtastic_mode = app() && app()->getConfig().mesh_protocol != chat::MeshProtocol::MeshCore;
     switch (index)
     {
     case 0:
         return "DETAIL";
     case 1:
-        return "ADD CONTACT";
+        return "REPLY";
     case 2:
-        return (node && node->is_ignored) ? "UNIGNORE NODE" : "IGNORE NODE";
+        return "ADD CONTACT";
     case 3:
-        return "TRACE ROUTE";
+        return (node && node->is_ignored) ? "UNIGNORE NODE" : "IGNORE NODE";
     case 4:
-        return "KEY VERIFICATION";
+        return "TRACE ROUTE";
     case 5:
-        if (node && node->key_manually_verified)
-        {
-            return "CLEAR KEY TRUST";
-        }
-        return "TRUST KEY";
+        return meshtastic_mode ? "EXCHANGE POSITION" : "OPEN COMPASS";
     case 6:
-        return "EXCHANGE POSITION";
-    case 7:
-        return "OPEN COMPASS";
+        return meshtastic_mode ? "OPEN COMPASS" : "";
     default:
         return "";
     }
@@ -5058,6 +5054,7 @@ void Runtime::executeNodeAction()
     auto* mesh = app() ? app()->getMeshAdapter() : nullptr;
     auto* contacts = app() ? &app()->getContactService() : nullptr;
     const chat::contacts::NodeInfo* node = selectedNode();
+    const bool meshtastic_mode = app() && app()->getConfig().mesh_protocol != chat::MeshProtocol::MeshCore;
     if (!node)
     {
         appendBootLog("node action na");
@@ -5073,6 +5070,16 @@ void Runtime::executeNodeAction()
         return;
     case 1:
     {
+        active_conversation_ = chat::ConversationId(chat::ChannelId::PRIMARY,
+                                                    node->node_id,
+                                                    chat::infra::meshProtocolFromRaw(
+                                                        static_cast<uint8_t>(node->protocol),
+                                                        app()->getConfig().mesh_protocol));
+        openCompose(EditTarget::Message);
+        return;
+    }
+    case 2:
+    {
         if (!contacts)
         {
             appendBootLog("contact svc na");
@@ -5087,6 +5094,7 @@ void Runtime::executeNodeAction()
         }
 
         char nickname[13] = {};
+        char fallback_nickname[13] = {};
         if (node->short_name[0] != '\0')
         {
             copyText(nickname, node->short_name);
@@ -5096,8 +5104,16 @@ void Runtime::executeNodeAction()
             std::snprintf(nickname, sizeof(nickname), "%04lX",
                           static_cast<unsigned long>(node->node_id & 0xFFFFUL));
         }
+        std::snprintf(fallback_nickname, sizeof(fallback_nickname), "%04lX",
+                      static_cast<unsigned long>(node->node_id & 0xFFFFUL));
 
-        if (contacts->addContact(node->node_id, nickname))
+        bool added = contacts->addContact(node->node_id, nickname);
+        if (!added && std::strcmp(nickname, fallback_nickname) != 0)
+        {
+            added = contacts->addContact(node->node_id, fallback_nickname);
+        }
+
+        if (added)
         {
             appendBootLog("contact added");
             showTransientPopup("ADD CONTACT", "SUCCESS");
@@ -5111,7 +5127,7 @@ void Runtime::executeNodeAction()
         }
         return;
     }
-    case 2:
+    case 3:
     {
         if (!contacts)
         {
@@ -5130,7 +5146,7 @@ void Runtime::executeNodeAction()
         }
         return;
     }
-    case 3:
+    case 4:
     {
         if (!mesh)
         {
@@ -5160,62 +5176,16 @@ void Runtime::executeNodeAction()
         showTransientPopup("TRACE ROUTE", ok ? "QUEUED" : "FAILED");
         return;
     }
-    case 4:
-    {
-        if (!mesh)
-        {
-            appendBootLog("verify na");
-            showTransientPopup("KEY VERIFICATION", "UNAVAILABLE");
-            return;
-        }
-        if (!mesh->getCapabilities().supports_pki)
-        {
-            appendBootLog("verify pki na");
-            showTransientPopup("KEY VERIFICATION", "PKI UNSUPPORTED");
-            return;
-        }
-        if (!node->has_public_key)
-        {
-            appendBootLog("verify req nodeinfo");
-            const bool requested = mesh->requestNodeInfo(node->node_id, true);
-            showTransientPopup("KEY VERIFICATION", requested ? "REQUESTING NODEINFO" : "NO PUBLIC KEY");
-            return;
-        }
-        const bool ok = mesh->startKeyVerification(node->node_id);
-        appendBootLog(ok ? "verify queued" : "verify failed");
-        showTransientPopup("KEY VERIFICATION", ok ? "QUEUED" : "FAILED");
-        return;
-    }
     case 5:
-    {
-        if (!contacts)
+        if (meshtastic_mode)
         {
-            appendBootLog("key trust na");
-            showTransientPopup("TRUST KEY", "UNAVAILABLE");
+            requestNodePositionExchange();
             return;
         }
-        if (!node->has_public_key)
-        {
-            appendBootLog("key trust req nodeinfo");
-            const bool requested = mesh->requestNodeInfo(node->node_id, true);
-            showTransientPopup("TRUST KEY", requested ? "REQUESTING NODEINFO" : "NO PUBLIC KEY");
-            return;
-        }
-        const bool trusted = !node->key_manually_verified;
-        const bool ok = contacts->setNodeKeyManuallyVerified(node->node_id, trusted);
-        appendBootLog(ok ? (trusted ? "key trusted" : "key trust clr") : "key trust fail");
-        showTransientPopup(trusted ? "TRUST KEY" : "CLEAR KEY TRUST", ok ? "SUCCESS" : "FAILED");
-        if (ok)
-        {
-            rebuildNodeList();
-            buildNodeInfo();
-        }
+        showTransientPopup("OPEN COMPASS", "OPENED");
+        enterPage(Page::NodeCompass);
         return;
-    }
     case 6:
-        requestNodePositionExchange();
-        return;
-    case 7:
         showTransientPopup("OPEN COMPASS", "OPENED");
         enterPage(Page::NodeCompass);
         return;

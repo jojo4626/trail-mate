@@ -2,8 +2,6 @@
 
 #include "ui/chat_ui_runtime.h"
 
-#include <memory>
-
 namespace chat::ui
 {
 
@@ -22,10 +20,7 @@ class GlobalChatUiRuntime final : public IChatUiRuntime
     bool isTeamConversationActive() const override;
 
   private:
-    class KeyVerificationModalRuntime;
-
     IChatUiRuntime* active_runtime_ = nullptr;
-    std::unique_ptr<KeyVerificationModalRuntime> key_verification_runtime_;
 };
 
 } // namespace chat::ui

@@ -100,7 +100,6 @@ bool AppFacadeRuntime::initialize()
     {
         (void)board_->begin();
     }
-
     (void)::boards::gat562_mesh_evb_pro::settings_store::loadAppConfig(config_);
     ::boards::gat562_mesh_evb_pro::settings_store::normalizeConfig(config_);
     initializeStores();
