@@ -269,12 +269,24 @@ void MeshtasticPhoneCore::reset()
 void MeshtasticPhoneCore::onIncomingText(const chat::MeshIncomingText& msg)
 {
     packet_queue_.push_back(buildPacketFromText(msg));
+    logDual("[BLE][mtcore] enqueue text packet id=%08lX from=%08lX to=%08lX len=%u\n",
+            static_cast<unsigned long>(packet_queue_.back().id),
+            static_cast<unsigned long>(packet_queue_.back().from),
+            static_cast<unsigned long>(packet_queue_.back().to),
+            static_cast<unsigned>(packet_queue_.back().decoded.payload.size));
     notifyFromNum(packet_queue_.back().id);
 }
 
 void MeshtasticPhoneCore::onIncomingData(const chat::MeshIncomingData& msg)
 {
     packet_queue_.push_back(buildPacketFromData(msg));
+    logDual("[BLE][mtcore] enqueue data packet id=%08lX port=%u req=%08lX from=%08lX to=%08lX len=%u\n",
+            static_cast<unsigned long>(packet_queue_.back().id),
+            static_cast<unsigned>(packet_queue_.back().decoded.portnum),
+            static_cast<unsigned long>(packet_queue_.back().decoded.request_id),
+            static_cast<unsigned long>(packet_queue_.back().from),
+            static_cast<unsigned long>(packet_queue_.back().to),
+            static_cast<unsigned>(packet_queue_.back().decoded.payload.size));
     notifyFromNum(packet_queue_.back().id);
 }
 
@@ -348,16 +360,6 @@ bool MeshtasticPhoneCore::handleToRadioPacket(meshtastic_MeshPacket& packet)
 
     packet.from = ctx_.getSelfNodeId();
     packet.rx_time = nowSeconds();
-
-    const bool is_broadcast = (packet.to == 0 || packet.to == 0xFFFFFFFFUL);
-    if (is_broadcast)
-    {
-        // Meshtastic broadcast messages should not be modeled as ACKed sends.
-        // Some phone clients set want_ack by default, which leaves the UI waiting
-        // for an ACK that will never exist for broadcast traffic.
-        packet.want_ack = false;
-        packet.decoded.want_response = false;
-    }
 
     const bool admin_for_self =
         (packet.decoded.portnum == meshtastic_PortNum_ADMIN_APP) &&
@@ -1054,6 +1056,10 @@ void MeshtasticPhoneCore::enqueueQueueStatus(uint32_t packet_id, bool ok)
     status.maxlen = kQueueDepthHint;
     status.mesh_packet_id = packet_id;
     queue_status_queue_.push_back(status);
+    logDual("[BLE][mtcore] queue status mesh_packet_id=%08lX ok=%u depth=%u\n",
+            static_cast<unsigned long>(packet_id),
+            ok ? 1U : 0U,
+            static_cast<unsigned>(queue_status_queue_.size()));
     notifyFromNum(packet_id);
 }
 
@@ -1559,7 +1565,20 @@ meshtastic_MeshPacket MeshtasticPhoneCore::buildPacketFromData(const chat::MeshI
     packet.from = msg.from;
     packet.to = msg.to;
     packet.channel = channelIndexFromId(msg.channel);
-    packet.id = (msg.packet_id == 0) ? static_cast<uint32_t>(millis()) : msg.packet_id;
+    if (msg.packet_id != 0)
+    {
+        packet.id = msg.packet_id;
+    }
+    else if (msg.portnum == meshtastic_PortNum_ROUTING_APP && msg.request_id != 0)
+    {
+        // Keep synthetic routing/ack packets tied to the original request ID so
+        // Meshtastic phone clients can correlate them with the pending send.
+        packet.id = msg.request_id;
+    }
+    else
+    {
+        packet.id = static_cast<uint32_t>(millis());
+    }
     packet.rx_time = (msg.rx_meta.rx_timestamp_s != 0) ? msg.rx_meta.rx_timestamp_s : nowSeconds();
     packet.rx_snr = msg.rx_meta.snr_db_x10 / 10.0f;
     packet.rx_rssi = msg.rx_meta.rssi_dbm_x10 / 10;

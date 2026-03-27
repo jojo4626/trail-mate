@@ -425,6 +425,7 @@ void UiController::onChatEvent(sys::Event* event)
             if (is_current_conversation)
             {
                 (void)updateConversationViewForIncoming(*latest);
+                reloadConversationView();
                 service_.markConversationRead(current_conv_);
             }
             else
@@ -444,13 +445,7 @@ void UiController::onChatEvent(sys::Event* event)
             const ChatMessage* msg = service_.getMessage(result_event->msg_id);
             if (!msg || !conversation_->updateMessageStatus(result_event->msg_id, msg->status))
             {
-                auto messages = service_.getRecentMessages(current_conv_, 50);
-                conversation_->clearMessages();
-                for (const auto& m : messages)
-                {
-                    conversation_->addMessage(m);
-                }
-                conversation_->scrollToBottom();
+                reloadConversationView();
             }
         }
         (void)result_event;
@@ -910,6 +905,22 @@ bool UiController::updateConversationViewForIncoming(const chat::ChatMessage& ms
 
     conversation_->addMessage(msg);
     return true;
+}
+
+void UiController::reloadConversationView()
+{
+    if (!conversation_ || team_conv_active_)
+    {
+        return;
+    }
+
+    auto messages = service_.getRecentMessages(current_conv_, 50);
+    conversation_->clearMessages();
+    for (const auto& msg : messages)
+    {
+        conversation_->addMessage(msg);
+    }
+    conversation_->scrollToBottom();
 }
 
 bool UiController::isTeamConversation(const chat::ConversationId& conv) const

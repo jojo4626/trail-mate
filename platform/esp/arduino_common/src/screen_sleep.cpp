@@ -406,12 +406,18 @@ void wakeScreenSaver()
         return;
     }
 
+    bool was_sleeping = false;
     if (s_activity_mutex != nullptr)
     {
         if (xSemaphoreTake(s_activity_mutex, pdMS_TO_TICKS(10)) == pdTRUE)
         {
+            was_sleeping = s_screen_sleeping;
+            // Treat the wake gesture as real activity so the background sleep
+            // task doesn't immediately force the panel back off before the
+            // 3-second saver window expires.
+            s_last_user_activity_time = millis();
             s_screen_saver_active = true;
-            s_screen_sleeping = true;
+            s_screen_sleeping = false;
             xSemaphoreGive(s_activity_mutex);
         }
     }
@@ -420,8 +426,20 @@ void wakeScreenSaver()
     lv_obj_clear_flag(s_screen_saver_layer, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(s_screen_saver_layer);
     lv_refr_now(nullptr);
-    s_saved_screen_brightness = board.getBrightness();
-    board.setBrightness(s_saved_screen_brightness);
+    if (was_sleeping)
+    {
+        board.exitScreenSleep();
+        board.setBrightness(s_saved_screen_brightness);
+        if (board.hasKeyboard())
+        {
+            board.keyboardSetBrightness(s_saved_keyboard_brightness);
+        }
+    }
+    else
+    {
+        s_saved_screen_brightness = board.getBrightness();
+        board.setBrightness(s_saved_screen_brightness);
+    }
 
     if (s_screen_saver_timer == nullptr)
     {
@@ -520,6 +538,7 @@ void updateUserActivity()
 {
     bool woke_from_sleep = false;
     bool hide_saver = false;
+    bool restore_sleep_state = false;
     if (s_activity_mutex != nullptr)
     {
         if (xSemaphoreTake(s_activity_mutex, pdMS_TO_TICKS(10)) == pdTRUE)
@@ -533,12 +552,8 @@ void updateUserActivity()
             if (s_screen_sleeping)
             {
                 s_screen_sleeping = false;
-                board.setBrightness(s_saved_screen_brightness);
-                if (board.hasKeyboard())
-                {
-                    board.keyboardSetBrightness(s_saved_keyboard_brightness);
-                }
                 woke_from_sleep = true;
+                restore_sleep_state = true;
             }
             xSemaphoreGive(s_activity_mutex);
         }
@@ -546,6 +561,15 @@ void updateUserActivity()
     if (hide_saver)
     {
         hide_screen_saver_layer();
+    }
+    if (restore_sleep_state)
+    {
+        board.exitScreenSleep();
+        board.setBrightness(s_saved_screen_brightness);
+        if (board.hasKeyboard())
+        {
+            board.keyboardSetBrightness(s_saved_keyboard_brightness);
+        }
     }
     if (woke_from_sleep)
     {

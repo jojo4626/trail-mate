@@ -35,6 +35,13 @@ class ChatService
         virtual void onIncomingMessage(const ChatMessage& msg, const RxMeta* rx_meta) = 0;
     };
 
+    class OutgoingTextObserver
+    {
+      public:
+        virtual ~OutgoingTextObserver() = default;
+        virtual void onOutgoingText(const MeshIncomingText& msg) = 0;
+    };
+
     ChatService(ChatModel& model,
                 IMeshAdapter& adapter,
                 IChatStore& store,
@@ -102,6 +109,8 @@ class ChatService
     void removeIncomingTextObserver(IncomingTextObserver* observer);
     void addIncomingMessageObserver(IncomingMessageObserver* observer);
     void removeIncomingMessageObserver(IncomingMessageObserver* observer);
+    void addOutgoingTextObserver(OutgoingTextObserver* observer);
+    void removeOutgoingTextObserver(OutgoingTextObserver* observer);
 
     /**
      * @brief Handle send result (ack/timeout)
@@ -142,6 +151,7 @@ class ChatService
     MeshProtocol active_protocol_ = MeshProtocol::Meshtastic;
     std::vector<IncomingTextObserver*> incoming_text_observers_;
     std::vector<IncomingMessageObserver*> incoming_message_observers_;
+    std::vector<OutgoingTextObserver*> outgoing_text_observers_;
 };
 
 } // namespace chat

@@ -83,6 +83,7 @@ class UiController : public IChatUiRuntime
     void applyConversationListToUi();
     void updateConversationMetaForMessage(const chat::ChatMessage& msg, bool increment_unread);
     bool updateConversationViewForIncoming(const chat::ChatMessage& msg);
+    void reloadConversationView();
     void refreshTeamConversation();
     void startTeamConversationTimer();
     void stopTeamConversationTimer();

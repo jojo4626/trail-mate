@@ -2087,7 +2087,8 @@ static void start_selected_node_key_verification()
     }
     if (!node->has_public_key)
     {
-        ::ui::SystemNotification::show("No public key yet", 1800);
+        const bool requested = mesh->requestNodeInfo(node->node_id, true);
+        ::ui::SystemNotification::show(requested ? "Requesting node info" : "No public key yet", 1800);
         contacts_focus_to_list();
         return;
     }
@@ -2100,7 +2101,9 @@ static void start_selected_node_key_verification()
 static void toggle_selected_node_key_trust()
 {
     const auto* node = get_selected_node();
-    if (!node || !g_contacts_state.contact_service)
+    app::IAppFacade& app_ctx = app::appFacade();
+    chat::IMeshAdapter* mesh = app_ctx.getMeshAdapter();
+    if (!node || !g_contacts_state.contact_service || !mesh)
     {
         ::ui::SystemNotification::show("Key trust unavailable", 1800);
         contacts_focus_to_list();
@@ -2108,7 +2111,8 @@ static void toggle_selected_node_key_trust()
     }
     if (!node->has_public_key)
     {
-        ::ui::SystemNotification::show("No public key yet", 1800);
+        const bool requested = mesh->requestNodeInfo(node->node_id, true);
+        ::ui::SystemNotification::show(requested ? "Requesting node info" : "No public key yet", 1800);
         contacts_focus_to_list();
         return;
     }

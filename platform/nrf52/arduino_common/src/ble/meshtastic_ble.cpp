@@ -273,6 +273,7 @@ void MeshtasticBleService::start()
     log_radio_.begin();
 
     ctx_.getChatService().addIncomingTextObserver(this);
+    ctx_.getChatService().addOutgoingTextObserver(this);
     startAdvertising(service_);
     active_ = true;
     pending_passkey_.store(0);
@@ -282,6 +283,7 @@ void MeshtasticBleService::start()
 void MeshtasticBleService::stop()
 {
     ctx_.getChatService().removeIncomingTextObserver(this);
+    ctx_.getChatService().removeOutgoingTextObserver(this);
     disconnectAll();
     Bluefruit.Advertising.stop();
     if (phone_session_)
@@ -321,6 +323,19 @@ void MeshtasticBleService::onIncomingText(const chat::MeshIncomingText& msg)
 {
     if (phone_session_)
     {
+        phone_session_->onIncomingText(msg);
+    }
+}
+
+void MeshtasticBleService::onOutgoingText(const chat::MeshIncomingText& msg)
+{
+    if (phone_session_)
+    {
+        Serial2.printf("[BLE][nrf52][mt] local text mirror id=%08lX from=%08lX to=%08lX len=%u\n",
+                       static_cast<unsigned long>(msg.msg_id),
+                       static_cast<unsigned long>(msg.from),
+                       static_cast<unsigned long>(msg.to),
+                       static_cast<unsigned>(msg.text.size()));
         phone_session_->onIncomingText(msg);
     }
 }

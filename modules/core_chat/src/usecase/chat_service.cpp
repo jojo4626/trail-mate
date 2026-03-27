@@ -77,6 +77,27 @@ MessageId ChatService::sendTextWithId(ChannelId channel, const std::string& text
     // Store message
     store_.append(msg);
 
+    if (queued && msg_id != 0)
+    {
+        MeshIncomingText outgoing{};
+        outgoing.channel = channel;
+        outgoing.from = adapter_.getNodeId();
+        outgoing.to = (peer != 0) ? peer : 0xFFFFFFFFUL;
+        outgoing.msg_id = msg_id;
+        outgoing.timestamp = msg.timestamp;
+        outgoing.text = text;
+        outgoing.hop_limit = 0;
+        outgoing.encrypted = false;
+
+        for (auto* observer : outgoing_text_observers_)
+        {
+            if (observer)
+            {
+                observer->onOutgoingText(outgoing);
+            }
+        }
+    }
+
     return msg.msg_id;
 }
 
@@ -234,6 +255,38 @@ void ChatService::removeIncomingMessageObserver(IncomingMessageObserver* observe
         if (*it == observer)
         {
             incoming_message_observers_.erase(it);
+            return;
+        }
+    }
+}
+
+void ChatService::addOutgoingTextObserver(OutgoingTextObserver* observer)
+{
+    if (!observer)
+    {
+        return;
+    }
+    for (auto* existing : outgoing_text_observers_)
+    {
+        if (existing == observer)
+        {
+            return;
+        }
+    }
+    outgoing_text_observers_.push_back(observer);
+}
+
+void ChatService::removeOutgoingTextObserver(OutgoingTextObserver* observer)
+{
+    if (!observer)
+    {
+        return;
+    }
+    for (auto it = outgoing_text_observers_.begin(); it != outgoing_text_observers_.end(); ++it)
+    {
+        if (*it == observer)
+        {
+            outgoing_text_observers_.erase(it);
             return;
         }
     }

@@ -5176,8 +5176,9 @@ void Runtime::executeNodeAction()
         }
         if (!node->has_public_key)
         {
-            appendBootLog("verify no pubkey");
-            showTransientPopup("KEY VERIFICATION", "NO PUBLIC KEY");
+            appendBootLog("verify req nodeinfo");
+            const bool requested = mesh->requestNodeInfo(node->node_id, true);
+            showTransientPopup("KEY VERIFICATION", requested ? "REQUESTING NODEINFO" : "NO PUBLIC KEY");
             return;
         }
         const bool ok = mesh->startKeyVerification(node->node_id);
@@ -5195,8 +5196,9 @@ void Runtime::executeNodeAction()
         }
         if (!node->has_public_key)
         {
-            appendBootLog("key trust no pubkey");
-            showTransientPopup("TRUST KEY", "NO PUBLIC KEY");
+            appendBootLog("key trust req nodeinfo");
+            const bool requested = mesh->requestNodeInfo(node->node_id, true);
+            showTransientPopup("TRUST KEY", requested ? "REQUESTING NODEINFO" : "NO PUBLIC KEY");
             return;
         }
         const bool trusted = !node->key_manually_verified;

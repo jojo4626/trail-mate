@@ -554,7 +554,7 @@ bool MeshtasticRadioAdapter::sendTextWithId(::chat::ChannelId channel, const std
     const uint8_t channel_hash = ::chat::meshtastic::computeChannelHash(channelNameFor(config_, out_channel),
                                                                         key,
                                                                         key_len);
-    const bool track_ack = (dest != kBroadcastNode);
+    const bool track_ack = true;
     const bool air_want_ack = shouldSetAirWantAck(dest, track_ack);
 
     uint8_t wire[384] = {};
@@ -587,7 +587,7 @@ bool MeshtasticRadioAdapter::sendTextWithId(::chat::ChannelId channel, const std
         std::memcpy(mqtt_data.payload.bytes, text.data(), mqtt_data.payload.size);
     }
 
-    if (!transmitPreparedWire(wire, wire_size, out_channel, &mqtt_data, true, true, 0, true))
+    if (!transmitPreparedWire(wire, wire_size, out_channel, &mqtt_data, track_ack, true, 0, true))
     {
         return false;
     }
@@ -665,7 +665,7 @@ bool MeshtasticRadioAdapter::sendAppData(::chat::ChannelId channel, uint32_t por
     const uint8_t* wire_payload = data_pb;
     size_t wire_payload_len = data_pb_size;
     bool use_pki = false;
-    bool track_ack = want_ack && !is_broadcast;
+    bool track_ack = want_ack;
     if (wire_dest != kBroadcastNode && pki_enabled_)
     {
         if (!pki_ready_ || !allowPkiForPortnum(portnum) || !hasPkiKey(wire_dest))
@@ -1056,6 +1056,11 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
         const auto pending_it = pending_retransmits_.find(pendingKey(header.from, header.id));
         if (is_broadcast && pending_it != pending_retransmits_.end())
         {
+            logMeshtasticRx("[gat562][mt] implicit-ack observed self-broadcast id=%08lX relay=%u next=%u ch=%u\n",
+                            static_cast<unsigned long>(header.id),
+                            static_cast<unsigned>(header.relay_node),
+                            static_cast<unsigned>(header.next_hop),
+                            static_cast<unsigned>(header.channel));
             ::chat::RxMeta implicit_rx{};
             implicit_rx.rx_timestamp_ms = millis();
             implicit_rx.rx_timestamp_s = nowSeconds();
@@ -1064,12 +1069,10 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
             implicit_rx.channel_hash = header.channel;
             implicit_rx.next_hop = header.next_hop;
             implicit_rx.relay_node = header.relay_node;
-            const ::chat::NodeId ack_from =
-                (header.relay_node != 0) ? static_cast<::chat::NodeId>(header.relay_node) : node_id_;
             pending_retransmits_.erase(pending_it);
             emitRoutingResult(header.id,
                               meshtastic_Routing_Error_NONE,
-                              ack_from,
+                              node_id_,
                               node_id_,
                               channel,
                               header.channel,
@@ -1465,6 +1468,15 @@ void MeshtasticRadioAdapter::processSendQueue()
         auto* header = reinterpret_cast<::chat::meshtastic::PacketHeaderWire*>(pending.wire.data());
         if (pending.retries_left == 0)
         {
+            if (pending.observe_only)
+            {
+                logMeshtasticRx("[gat562][mt] observe timeout id=%08lX dest=%08lX ch=%u local=%u want_ack=%u\n",
+                                static_cast<unsigned long>(pending.packet_id),
+                                static_cast<unsigned long>(pending.dest),
+                                static_cast<unsigned>(pending.channel),
+                                pending.local_origin ? 1U : 0U,
+                                pending.want_ack ? 1U : 0U);
+            }
             if (pending.local_origin && pending.want_ack)
             {
                 emitRoutingResult(pending.packet_id,
@@ -2243,6 +2255,14 @@ void MeshtasticRadioAdapter::queuePendingRetransmit(const ::chat::meshtastic::Pa
                                    : (pending.want_ack ? kDefaultAckRetries : kDefaultNextHopRetries);
         pending.next_tx_ms = millis() + kRetransmitIntervalMs;
     }
+    logMeshtasticRx("[gat562][mt] watch pending id=%08lX from=%08lX dest=%08lX observe=%u local=%u want_ack=%u next=%lu\n",
+                    static_cast<unsigned long>(pending.packet_id),
+                    static_cast<unsigned long>(pending.original_from),
+                    static_cast<unsigned long>(pending.dest),
+                    pending.observe_only ? 1U : 0U,
+                    pending.local_origin ? 1U : 0U,
+                    pending.want_ack ? 1U : 0U,
+                    static_cast<unsigned long>(pending.next_tx_ms));
     pending_retransmits_[pendingKey(header.from, header.id)] = std::move(pending);
 }
 

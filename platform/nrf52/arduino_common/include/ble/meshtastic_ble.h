@@ -27,6 +27,7 @@ class MeshtasticPhoneCore;
 
 class MeshtasticBleService final : public BleService,
                                    public chat::ChatService::IncomingTextObserver,
+                                   public chat::ChatService::OutgoingTextObserver,
                                    public MeshtasticPhoneTransport,
                                    public MeshtasticPhoneHooks
 {
@@ -38,6 +39,7 @@ class MeshtasticBleService final : public BleService,
     void stop() override;
     void update() override;
     void onIncomingText(const chat::MeshIncomingText& msg) override;
+    void onOutgoingText(const chat::MeshIncomingText& msg) override;
     bool handleToRadio(const uint8_t* data, size_t len);
     bool popToPhone(MeshtasticBleFrame* out);
     void handleConnectEvent(uint16_t conn_handle);

@@ -456,6 +456,7 @@ void MeshtasticBleService::start()
     startAdvertising();
 
     ctx_.getChatService().addIncomingTextObserver(this);
+    ctx_.getChatService().addOutgoingTextObserver(this);
     if (auto* team = ctx_.getTeamService())
     {
         team->addIncomingDataObserver(this);
@@ -467,6 +468,7 @@ void MeshtasticBleService::start()
 void MeshtasticBleService::stop()
 {
     ctx_.getChatService().removeIncomingTextObserver(this);
+    ctx_.getChatService().removeOutgoingTextObserver(this);
     if (auto* team = ctx_.getTeamService())
     {
         team->removeIncomingDataObserver(this);
@@ -523,6 +525,12 @@ void MeshtasticBleService::update()
         device_name_.c_str());
     refreshBatteryLevel(true);
     syncMqttProxySettings();
+    if (phone_session_)
+    {
+        // Drain mesh adapter app-data events (including synthetic ROUTING_APP
+        // ACK/NAK results) into the phone session before BLE reads them.
+        phone_session_->pumpIncomingAppData();
+    }
     handleFromPhone();
     handleToPhone();
 }
@@ -535,6 +543,23 @@ void MeshtasticBleService::onIncomingText(const chat::MeshIncomingText& msg)
         if (phone_session_->isSendingPackets())
         {
             // Match Meshtastic BLE flow: in steady state, notify phone when new data becomes available.
+            notifyFromNum(0);
+        }
+    }
+}
+
+void MeshtasticBleService::onOutgoingText(const chat::MeshIncomingText& msg)
+{
+    if (phone_session_)
+    {
+        ble_log("local text mirror id=%lu from=%08lX to=%08lX len=%u",
+                static_cast<unsigned long>(msg.msg_id),
+                static_cast<unsigned long>(msg.from),
+                static_cast<unsigned long>(msg.to),
+                static_cast<unsigned>(msg.text.size()));
+        phone_session_->onIncomingText(msg);
+        if (phone_session_->isSendingPackets())
+        {
             notifyFromNum(0);
         }
     }
