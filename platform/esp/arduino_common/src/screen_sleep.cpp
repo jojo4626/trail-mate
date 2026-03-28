@@ -211,7 +211,7 @@ void init_screen_saver()
     s_screen_saver_hint_label = lv_label_create(s_screen_saver_layer);
     lv_obj_set_style_text_color(s_screen_saver_hint_label, lv_color_hex(0x8A6A3A), 0);
     lv_obj_set_style_text_font(s_screen_saver_hint_label, &lv_font_montserrat_14, 0);
-#if defined(ARDUINO_T_DECK)
+#if defined(ARDUINO_T_DECK) || defined(ARDUINO_T_DECK_PRO)
     lv_label_set_text(s_screen_saver_hint_label, "Press SPACE to enter main menu");
 #else
     lv_label_set_text(s_screen_saver_hint_label, "Press SPACE to enter");
@@ -412,12 +412,12 @@ void wakeScreenSaver()
         if (xSemaphoreTake(s_activity_mutex, pdMS_TO_TICKS(10)) == pdTRUE)
         {
             was_sleeping = s_screen_sleeping;
-            // Treat the wake gesture as real activity so the background sleep
-            // task doesn't immediately force the panel back off before the
-            // 3-second saver window expires.
-            s_last_user_activity_time = millis();
             s_screen_saver_active = true;
-            s_screen_sleeping = false;
+            // Keep the runtime in the logical sleep state while the transient
+            // saver is visible. This matches the 0.1.13 behavior: waking only
+            // shows the saver shell, and if the user does nothing for 3s we go
+            // right back to sleep instead of being treated as fully awake.
+            s_screen_sleeping = true;
             xSemaphoreGive(s_activity_mutex);
         }
     }

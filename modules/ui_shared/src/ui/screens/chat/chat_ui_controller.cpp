@@ -15,6 +15,7 @@
 #include "team/protocol/team_location_marker.h"
 #include "team/usecase/team_controller.h"
 #include "ui/page/page_profile.h"
+#include "ui/assets/fonts/fonts.h"
 #include "ui/screens/team/team_ui_store.h"
 #include "ui/ui_common.h"
 #include "ui/widgets/system_notification.h"
@@ -1516,7 +1517,11 @@ void UiController::openKeyVerificationInfoModal(chat::NodeId node_id, uint32_t n
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
 
     char num_buf[24] = {};
-    std::snprintf(num_buf, sizeof(num_buf), "%03u %03u", number / 1000U, number % 1000U);
+    std::snprintf(num_buf,
+                  sizeof(num_buf),
+                  "%03u %03u",
+                  static_cast<unsigned>(number / 1000U),
+                  static_cast<unsigned>(number % 1000U));
     key_verify_desc_ = lv_label_create(key_verify_panel_);
     std::string desc = resolve_contact_name(node_id) + "\nShare this number:\n";
     desc += num_buf;
