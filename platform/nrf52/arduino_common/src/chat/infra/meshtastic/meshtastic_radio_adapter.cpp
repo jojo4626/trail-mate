@@ -526,8 +526,11 @@ bool MeshtasticRadioAdapter::sendTextWithId(::chat::ChannelId channel, const std
         return ok;
     }
 
-    uint8_t payload[256] = {};
-    size_t payload_size = sizeof(payload);
+    auto& scratch = tx_scratch_;
+    std::fill(scratch.app_data.begin(), scratch.app_data.end(), 0);
+    std::fill(scratch.wire.begin(), scratch.wire.end(), 0);
+    uint8_t* payload = scratch.app_data.data();
+    size_t payload_size = scratch.app_data.size();
     const ::chat::MessageId packet_id = (forced_msg_id != 0) ? forced_msg_id : next_packet_id_++;
     if (forced_msg_id != 0 && forced_msg_id >= next_packet_id_)
     {
@@ -557,8 +560,8 @@ bool MeshtasticRadioAdapter::sendTextWithId(::chat::ChannelId channel, const std
     const bool track_ack = true;
     const bool air_want_ack = shouldSetAirWantAck(dest, track_ack);
 
-    uint8_t wire[384] = {};
-    size_t wire_size = sizeof(wire);
+    uint8_t* wire = scratch.wire.data();
+    size_t wire_size = scratch.wire.size();
     if (!::chat::meshtastic::buildWirePacket(payload,
                                              payload_size,
                                              node_id_,
@@ -636,8 +639,12 @@ bool MeshtasticRadioAdapter::sendAppData(::chat::ChannelId channel, uint32_t por
 
     const bool effective_want_response = want_response || want_ack;
 
-    uint8_t data_pb[256] = {};
-    size_t data_pb_size = sizeof(data_pb);
+    auto& scratch = tx_scratch_;
+    std::fill(scratch.app_data.begin(), scratch.app_data.end(), 0);
+    std::fill(scratch.aux_data.begin(), scratch.aux_data.end(), 0);
+    std::fill(scratch.wire.begin(), scratch.wire.end(), 0);
+    uint8_t* data_pb = scratch.app_data.data();
+    size_t data_pb_size = scratch.app_data.size();
     if (!::chat::meshtastic::encodeAppData(portnum, payload, len, effective_want_response, data_pb, &data_pb_size))
     {
         return false;
@@ -673,8 +680,8 @@ bool MeshtasticRadioAdapter::sendAppData(::chat::ChannelId channel, uint32_t por
             return false;
         }
 
-        uint8_t pki_buf[256] = {};
-        size_t pki_len = sizeof(pki_buf);
+        uint8_t* pki_buf = scratch.aux_data.data();
+        size_t pki_len = scratch.aux_data.size();
         if (!encryptPkiPayload(wire_dest, packet_id, data_pb, data_pb_size, pki_buf, &pki_len))
         {
             return false;
@@ -690,8 +697,8 @@ bool MeshtasticRadioAdapter::sendAppData(::chat::ChannelId channel, uint32_t por
         use_pki = true;
     }
 
-    uint8_t wire[384] = {};
-    size_t wire_size = sizeof(wire);
+    uint8_t* wire = scratch.wire.data();
+    size_t wire_size = scratch.wire.size();
     if (!::chat::meshtastic::buildWirePacket(wire_payload,
                                              wire_payload_len,
                                              node_id_,

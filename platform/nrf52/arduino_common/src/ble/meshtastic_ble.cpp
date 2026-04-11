@@ -2,20 +2,34 @@
 
 #include "app/app_config.h"
 #include "ble/ble_uuids.h"
+#if defined(GAT562_MESH_EVB_PRO)
+#include "boards/gat562_mesh_evb_pro/settings_store.h"
+#endif
+#include "chat/ble/meshtastic_defaults.h"
 #include "chat/infra/meshtastic/mt_region.h"
 #include "platform/nrf52/arduino_common/chat/infra/meshtastic/meshtastic_radio_adapter.h"
+#include "platform/ui/settings_store.h"
 
 #include <Arduino.h>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 namespace ble
 {
 namespace
 {
-constexpr const char* kDefaultMqttRoot = "msh";
 constexpr uint32_t kDefaultBleFixedPin = 654321;
+constexpr uint32_t kConfigSaveDebounceMs = 1500UL;
+constexpr const char* kBleSettingsNamespace = "ble_meshtastic";
+constexpr const char* kBluetoothConfigKey = "bt_cfg";
+constexpr const char* kModuleConfigKey = "mod_cfg";
+
+bool usbSerialWritable(std::size_t len)
+{
+    return static_cast<bool>(Serial) && Serial.dtr() != 0 && Serial.availableForWrite() >= static_cast<int>(len);
+}
 
 void bleLogBoth(const char* fmt, ...)
 {
@@ -24,7 +38,10 @@ void bleLogBoth(const char* fmt, ...)
     va_start(args, fmt);
     std::vsnprintf(buffer, sizeof(buffer), fmt, args);
     va_end(args);
-    Serial.println(buffer);
+    if (usbSerialWritable(std::strlen(buffer) + 2U))
+    {
+        Serial.println(buffer);
+    }
     Serial2.println(buffer);
 }
 
@@ -54,6 +71,198 @@ void copyBounded(char* dst, size_t dst_len, const char* src)
 
     std::strncpy(dst, src, dst_len - 1);
     dst[dst_len - 1] = '\0';
+}
+
+void repairLegacyMqttConfig(meshtastic_LocalModuleConfig* config)
+{
+    if (!config)
+    {
+        return;
+    }
+
+    config->has_mqtt = true;
+    config->mqtt.address[sizeof(config->mqtt.address) - 1] = '\0';
+    config->mqtt.username[sizeof(config->mqtt.username) - 1] = '\0';
+    config->mqtt.password[sizeof(config->mqtt.password) - 1] = '\0';
+    config->mqtt.root[sizeof(config->mqtt.root) - 1] = '\0';
+    if (config->mqtt.address[0] == '\0')
+    {
+        copyBounded(config->mqtt.address, sizeof(config->mqtt.address), meshtastic_defaults::kDefaultMqttAddress);
+    }
+    if (config->mqtt.username[0] == '\0')
+    {
+        copyBounded(config->mqtt.username, sizeof(config->mqtt.username), meshtastic_defaults::kDefaultMqttUsername);
+    }
+    if (config->mqtt.password[0] == '\0')
+    {
+        copyBounded(config->mqtt.password, sizeof(config->mqtt.password), meshtastic_defaults::kDefaultMqttPassword);
+    }
+    if (config->mqtt.root[0] == '\0')
+    {
+        copyBounded(config->mqtt.root, sizeof(config->mqtt.root), meshtastic_defaults::kDefaultMqttRoot);
+    }
+    if (!config->mqtt.has_map_report_settings)
+    {
+        config->mqtt.has_map_report_settings = true;
+        config->mqtt.map_report_settings.publish_interval_secs = meshtastic_defaults::kDefaultMapPublishIntervalSecs;
+        config->mqtt.map_report_settings.position_precision = 0;
+        config->mqtt.map_report_settings.should_report_location = false;
+    }
+}
+
+void initDefaultModuleConfig(app::IAppBleFacade& ctx, meshtastic_LocalModuleConfig* config)
+{
+    if (!config)
+    {
+        return;
+    }
+
+    meshtastic_LocalModuleConfig zero = meshtastic_LocalModuleConfig_init_zero;
+    *config = zero;
+    config->version = meshtastic_defaults::kModuleConfigVersion;
+    config->has_mqtt = true;
+    config->has_serial = true;
+    config->has_external_notification = true;
+    config->has_store_forward = true;
+    config->has_range_test = true;
+    config->has_telemetry = true;
+    config->has_canned_message = true;
+    config->has_audio = true;
+    config->has_remote_hardware = true;
+    config->has_neighbor_info = true;
+    config->has_ambient_lighting = true;
+    config->has_detection_sensor = true;
+    config->has_paxcounter = true;
+
+    config->mqtt.enabled = false;
+    config->mqtt.proxy_to_client_enabled = false;
+    copyBounded(config->mqtt.address, sizeof(config->mqtt.address), meshtastic_defaults::kDefaultMqttAddress);
+    copyBounded(config->mqtt.username, sizeof(config->mqtt.username), meshtastic_defaults::kDefaultMqttUsername);
+    copyBounded(config->mqtt.password, sizeof(config->mqtt.password), meshtastic_defaults::kDefaultMqttPassword);
+    copyBounded(config->mqtt.root, sizeof(config->mqtt.root), meshtastic_defaults::kDefaultMqttRoot);
+    config->mqtt.encryption_enabled = meshtastic_defaults::kDefaultMqttEncryptionEnabled;
+    config->mqtt.tls_enabled = meshtastic_defaults::kDefaultMqttTlsEnabled;
+    config->mqtt.has_map_report_settings = true;
+    config->mqtt.map_report_settings.publish_interval_secs = meshtastic_defaults::kDefaultMapPublishIntervalSecs;
+    config->mqtt.map_report_settings.position_precision = 0;
+    config->mqtt.map_report_settings.should_report_location = false;
+
+    config->telemetry.device_update_interval = 3600;
+    config->telemetry.device_telemetry_enabled = true;
+    config->telemetry.environment_update_interval = 0;
+    config->telemetry.environment_measurement_enabled = false;
+    config->telemetry.power_update_interval = 0;
+    config->telemetry.health_update_interval = 0;
+    config->telemetry.air_quality_interval = 0;
+
+    config->neighbor_info.enabled = false;
+    config->neighbor_info.update_interval = 0;
+    config->neighbor_info.transmit_over_lora = false;
+
+    config->detection_sensor.enabled = false;
+    config->ambient_lighting.current = meshtastic_defaults::kDefaultAmbientCurrent;
+    const uint32_t self_node = ctx.getSelfNodeId();
+    config->ambient_lighting.red = (self_node >> 16) & 0xFFU;
+    config->ambient_lighting.green = (self_node >> 8) & 0xFFU;
+    config->ambient_lighting.blue = self_node & 0xFFU;
+}
+
+struct PersistedBleState
+{
+    bool has_bluetooth = false;
+    bool has_module = false;
+    meshtastic_Config_BluetoothConfig bluetooth = meshtastic_Config_BluetoothConfig_init_zero;
+    meshtastic_LocalModuleConfig module = meshtastic_LocalModuleConfig_init_zero;
+};
+
+template <typename T>
+bool loadBlobConfigFromUiStore(const char* key, T* out)
+{
+    if (!out)
+    {
+        return false;
+    }
+
+    std::vector<uint8_t> blob;
+    if (!platform::ui::settings_store::get_blob(kBleSettingsNamespace, key, blob))
+    {
+        return false;
+    }
+    if (blob.size() != sizeof(T))
+    {
+        bleLogBoth("[BLE][nrf52][mt] load cfg size mismatch key=%s got=%u expected=%u",
+                   key ? key : "?",
+                   static_cast<unsigned>(blob.size()),
+                   static_cast<unsigned>(sizeof(T)));
+        return false;
+    }
+
+    std::memcpy(out, blob.data(), sizeof(T));
+    return true;
+}
+
+template <typename T>
+bool saveBlobConfigToUiStore(const char* key, const T& value)
+{
+    const bool ok = platform::ui::settings_store::put_blob(kBleSettingsNamespace, key, &value, sizeof(T));
+    if (!ok)
+    {
+        bleLogBoth("[BLE][nrf52][mt] save cfg failed key=%s size=%u",
+                   key ? key : "?",
+                   static_cast<unsigned>(sizeof(T)));
+    }
+    return ok;
+}
+
+bool loadPersistedBleState(PersistedBleState* out)
+{
+    if (!out)
+    {
+        return false;
+    }
+
+    *out = PersistedBleState{};
+
+#if defined(GAT562_MESH_EVB_PRO)
+    if (::boards::gat562_mesh_evb_pro::settings_store::loadMeshtasticBleState(&out->bluetooth, &out->module))
+    {
+        out->has_bluetooth = true;
+        out->has_module = true;
+        return true;
+    }
+#endif
+
+    out->has_bluetooth = loadBlobConfigFromUiStore(kBluetoothConfigKey, &out->bluetooth);
+    out->has_module = loadBlobConfigFromUiStore(kModuleConfigKey, &out->module);
+    if (out->has_bluetooth || out->has_module)
+    {
+        bleLogBoth("[BLE][nrf52][mt] legacy cfg store fallback bt=%u mod=%u",
+                   out->has_bluetooth ? 1U : 0U,
+                   out->has_module ? 1U : 0U);
+    }
+    return out->has_bluetooth || out->has_module;
+}
+
+bool savePersistedBleState(const meshtastic_Config_BluetoothConfig& bluetooth,
+                           const meshtastic_LocalModuleConfig& module)
+{
+#if defined(GAT562_MESH_EVB_PRO)
+    return ::boards::gat562_mesh_evb_pro::settings_store::saveMeshtasticBleState(bluetooth, module);
+#else
+    const bool bluetooth_ok = saveBlobConfigToUiStore(kBluetoothConfigKey, bluetooth);
+    const bool module_ok = saveBlobConfigToUiStore(kModuleConfigKey, module);
+    return bluetooth_ok && module_ok;
+#endif
+}
+
+bool isValidBluetoothMode(uint8_t mode)
+{
+    return mode <= static_cast<uint8_t>(meshtastic_Config_BluetoothConfig_PairingMode_NO_PIN);
+}
+
+bool isValidBlePin(uint32_t pin)
+{
+    return pin == 0 || (pin >= 100000 && pin <= 999999);
 }
 
 std::string channelDisplayName(const app::IAppBleFacade& ctx, uint8_t idx)
@@ -247,20 +456,60 @@ MeshtasticBleService::MeshtasticBleService(app::IAppBleFacade& ctx, const std::s
       to_radio_(::BLEUuid(TORADIO_UUID)),
       from_radio_(::BLEUuid(FROMRADIO_UUID)),
       from_num_(::BLEUuid(FROMNUM_UUID)),
-      log_radio_(::BLEUuid(LOGRADIO_UUID)),
-      phone_session_(new MeshtasticPhoneSession(ctx, *this, this))
+      log_radio_(::BLEUuid(LOGRADIO_UUID))
 {
     ble_config_ = meshtastic_Config_BluetoothConfig_init_zero;
     ble_config_.enabled = ctx_.isBleEnabled();
     ble_config_.mode = meshtastic_Config_BluetoothConfig_PairingMode_RANDOM_PIN;
     ble_config_.fixed_pin = 0;
 
-    std::memset(&module_config_, 0, sizeof(module_config_));
-    module_config_.has_mqtt = true;
-    module_config_.mqtt.enabled = false;
-    module_config_.mqtt.proxy_to_client_enabled = false;
-    module_config_.mqtt.encryption_enabled = true;
-    copyBounded(module_config_.mqtt.root, sizeof(module_config_.mqtt.root), kDefaultMqttRoot);
+    PersistedBleState persisted{};
+    const bool persisted_ok = loadPersistedBleState(&persisted);
+
+    bleLogBoth("[BLE][nrf52][mt] persisted load ok=%u has_bt=%u has_mod=%u",
+            persisted_ok ? 1U : 0U,
+            persisted.has_bluetooth ? 1U : 0U,
+            persisted.has_module ? 1U : 0U);
+
+    #if defined(GAT562_MESH_EVB_PRO)
+        bleLogBoth("[BLE][nrf52][mt] settings_store load=%s save=%s",
+                ::boards::gat562_mesh_evb_pro::settings_store::statusLabel(
+                    ::boards::gat562_mesh_evb_pro::settings_store::lastLoadStatus()),
+                ::boards::gat562_mesh_evb_pro::settings_store::statusLabel(
+                    ::boards::gat562_mesh_evb_pro::settings_store::lastSaveStatus()));
+    #endif
+    
+    if (persisted.has_bluetooth &&
+        isValidBluetoothMode(static_cast<uint8_t>(persisted.bluetooth.mode)) &&
+        isValidBlePin(persisted.bluetooth.fixed_pin))
+    {
+        ble_config_.mode = persisted.bluetooth.mode;
+        ble_config_.fixed_pin = persisted.bluetooth.fixed_pin;
+        bleLogBoth("[BLE][nrf52][mt] loaded bluetooth cfg mode=%u pin=%06lu",
+                   static_cast<unsigned>(ble_config_.mode),
+                   static_cast<unsigned long>(ble_config_.fixed_pin));
+    }
+    if (ble_config_.mode == meshtastic_Config_BluetoothConfig_PairingMode_NO_PIN)
+    {
+        ble_config_.fixed_pin = 0;
+    }
+
+    initDefaultModuleConfig(ctx_, &module_config_);
+    if (persisted.has_module)
+    {
+        module_config_ = persisted.module;
+        if (module_config_.version == 0)
+        {
+            module_config_.version = meshtastic_defaults::kModuleConfigVersion;
+        }
+        repairLegacyMqttConfig(&module_config_);
+        bleLogBoth("[BLE][nrf52][mt] loaded module cfg mqtt enabled=%u proxy=%u root=%s",
+                   module_config_.has_mqtt && module_config_.mqtt.enabled ? 1U : 0U,
+                   module_config_.has_mqtt && module_config_.mqtt.proxy_to_client_enabled ? 1U : 0U,
+                   module_config_.mqtt.root);
+    }
+
+    phone_session_.reset(new MeshtasticPhoneSession(ctx, *this, this));
 }
 
 MeshtasticBleService::~MeshtasticBleService()
@@ -288,6 +537,7 @@ void MeshtasticBleService::start()
     pending_from_radio_empty_log_ = false;
     pairing_request_pending_ = false;
     pending_pairing_conn_handle_ = BLE_CONN_HANDLE_INVALID;
+    last_ble_activity_ms_ = millis();
     prepareBluefruit(device_name_);
     applyBleSecurity();
 
@@ -344,6 +594,7 @@ void MeshtasticBleService::stop()
     ctx_.getChatService().removeOutgoingTextObserver(this);
     disconnectAll();
     Bluefruit.Advertising.stop();
+    flushPendingConfigSaves(true);
     if (phone_session_)
     {
         phone_session_->close();
@@ -398,6 +649,7 @@ void MeshtasticBleService::update()
     prepareReadableFromRadio();
     flushPendingFromNumNotify();
     logDeferredBleEvents();
+    flushPendingConfigSaves(false);
 
     if (!Bluefruit.connected() && !Bluefruit.Advertising.isRunning())
     {
@@ -437,6 +689,7 @@ void MeshtasticBleService::onOutgoingText(const chat::MeshIncomingText& msg)
 
 bool MeshtasticBleService::handleToRadio(const uint8_t* data, size_t len)
 {
+    last_ble_activity_ms_ = millis();
     Serial2.printf("[BLE][nrf52][mt] handleToRadio len=%u connected=%u\n",
                    static_cast<unsigned>(len),
                    connected_ ? 1U : 0U);
@@ -741,6 +994,7 @@ void MeshtasticBleService::handleConnectEvent(uint16_t conn_handle)
 {
     connected_ = true;
     conn_handle_ = conn_handle;
+    last_ble_activity_ms_ = millis();
     from_num_notify_enabled_ = false;
     clearToPhoneQueue();
     pairing_request_pending_ = true;
@@ -757,6 +1011,7 @@ void MeshtasticBleService::handleDisconnectEvent(uint16_t conn_handle)
     connected_ = false;
     from_num_notify_enabled_ = false;
     conn_handle_ = BLE_CONN_HANDLE_INVALID;
+    last_ble_activity_ms_ = millis();
     if (phone_session_)
     {
         phone_session_->close();
@@ -770,11 +1025,13 @@ void MeshtasticBleService::handleDisconnectEvent(uint16_t conn_handle)
     pending_pairing_conn_handle_ = BLE_CONN_HANDLE_INVALID;
     pending_disconnect_conn_handle_ = conn_handle;
     pending_disconnect_log_ = true;
+    flushPendingConfigSaves(true);
 }
 
 void MeshtasticBleService::handleFromNumCccdWrite(uint16_t conn_handle, uint16_t value)
 {
     conn_handle_ = conn_handle;
+    last_ble_activity_ms_ = millis();
     from_num_notify_enabled_ = (value != 0U);
     pending_from_num_cccd_conn_handle_ = conn_handle;
     pending_from_num_cccd_value_ = value;
@@ -889,6 +1146,27 @@ bool MeshtasticBleService::loadBluetoothConfig(meshtastic_Config_BluetoothConfig
     return true;
 }
 
+void MeshtasticBleService::saveBluetoothConfig(const meshtastic_Config_BluetoothConfig& config)
+{
+    ble_config_ = config;
+    ble_config_.enabled = config.enabled;
+    if (!isValidBluetoothMode(static_cast<uint8_t>(ble_config_.mode)))
+    {
+        ble_config_.mode = meshtastic_Config_BluetoothConfig_PairingMode_RANDOM_PIN;
+    }
+    if (!isValidBlePin(ble_config_.fixed_pin) ||
+        ble_config_.mode == meshtastic_Config_BluetoothConfig_PairingMode_NO_PIN)
+    {
+        ble_config_.fixed_pin = 0;
+    }
+
+    markConfigSavePending(true, false);
+    bleLogBoth("[BLE][nrf52][mt] saveBluetoothConfig queued mode=%u pin=%06lu enabled=%u",
+               static_cast<unsigned>(ble_config_.mode),
+               static_cast<unsigned long>(ble_config_.fixed_pin),
+               ble_config_.enabled ? 1U : 0U);
+}
+
 bool MeshtasticBleService::loadDeviceConnectionStatus(meshtastic_DeviceConnectionStatus* out) const
 {
     if (!out)
@@ -912,19 +1190,104 @@ bool MeshtasticBleService::loadModuleConfig(meshtastic_LocalModuleConfig* out) c
     }
 
     *out = module_config_;
+    repairLegacyMqttConfig(out);
     return true;
 }
 
 void MeshtasticBleService::saveModuleConfig(const meshtastic_LocalModuleConfig& config)
 {
-    Serial2.printf("[BLE][nrf52][mt] saveModuleConfig mqtt enabled=%u proxy=%u enc=%u root=%s\n",
-                   config.has_mqtt && config.mqtt.enabled ? 1U : 0U,
-                   config.has_mqtt && config.mqtt.proxy_to_client_enabled ? 1U : 0U,
-                   config.has_mqtt ? (config.mqtt.encryption_enabled ? 1U : 0U) : 1U,
-                   config.has_mqtt ? config.mqtt.root : "");
+    bleLogBoth("[BLE][nrf52][mt] saveModuleConfig mqtt enabled=%u proxy=%u enc=%u root=%s",
+               config.has_mqtt && config.mqtt.enabled ? 1U : 0U,
+               config.has_mqtt && config.mqtt.proxy_to_client_enabled ? 1U : 0U,
+               config.has_mqtt ? (config.mqtt.encryption_enabled ? 1U : 0U) : 1U,
+               config.has_mqtt ? config.mqtt.root : "");
     module_config_ = config;
+    if (module_config_.version == 0)
+    {
+        module_config_.version = meshtastic_defaults::kModuleConfigVersion;
+    }
+    repairLegacyMqttConfig(&module_config_);
+    markConfigSavePending(false, true);
     syncMqttProxySettings();
-    Serial2.printf("[BLE][nrf52][mt] saveModuleConfig done\n");
+    bleLogBoth("[BLE][nrf52][mt] saveModuleConfig queued");
+}
+
+void MeshtasticBleService::markConfigSavePending(bool bluetooth_changed, bool module_changed)
+{
+    if (bluetooth_changed)
+    {
+        bluetooth_config_save_pending_ = true;
+    }
+    if (module_changed)
+    {
+        module_config_save_pending_ = true;
+    }
+    config_save_due_ms_ = millis() + kConfigSaveDebounceMs;
+}
+
+void MeshtasticBleService::flushPendingConfigSaves(bool force)
+{
+    if (!bluetooth_config_save_pending_ && !module_config_save_pending_)
+    {
+        return;
+    }
+
+    const uint32_t now_ms = millis();
+    if (!force)
+    {
+        if (phone_session_ && phone_session_->isConfigFlowActive())
+        {
+            return;
+        }
+        if (static_cast<int32_t>(now_ms - config_save_due_ms_) < 0)
+        {
+            return;
+        }
+        if (connected_ && (now_ms - last_ble_activity_ms_) < kConfigSaveDebounceMs)
+        {
+            return;
+        }
+    }
+
+    const bool needs_save = bluetooth_config_save_pending_ || module_config_save_pending_;
+    const bool persisted = needs_save ? savePersistedBleState(ble_config_, module_config_) : true;
+
+    bleLogBoth("[BLE][nrf52][mt] current mem persisted=%u bluetooth_config_save_pending_=%u module_config_save_pending_=%u needs_save=%u",
+               persisted ? 1U : 0U,
+               bluetooth_config_save_pending_ ? 1U : 0U,
+               module_config_save_pending_ ? 1U : 0U,
+               needs_save ? 1U : 0U);
+
+    if (bluetooth_config_save_pending_)
+    {
+        bleLogBoth("[BLE][nrf52][mt] flush bluetooth cfg persisted=%u mode=%u pin=%06lu enabled=%u",
+                   persisted ? 1U : 0U,
+                   static_cast<unsigned>(ble_config_.mode),
+                   static_cast<unsigned long>(ble_config_.fixed_pin),
+                   ble_config_.enabled ? 1U : 0U);
+        if (persisted)
+        {
+            bluetooth_config_save_pending_ = false;
+        }
+    }
+
+    if (module_config_save_pending_)
+    {
+        bleLogBoth("[BLE][nrf52][mt] flush module cfg persisted=%u enabled=%u proxy=%u root=%s",
+                   persisted ? 1U : 0U,
+                   module_config_.has_mqtt && module_config_.mqtt.enabled ? 1U : 0U,
+                   module_config_.has_mqtt && module_config_.mqtt.proxy_to_client_enabled ? 1U : 0U,
+                   module_config_.mqtt.root);
+        if (persisted)
+        {
+            module_config_save_pending_ = false;
+        }
+    }
+
+    if (!persisted)
+    {
+        config_save_due_ms_ = millis() + kConfigSaveDebounceMs;
+    }
 }
 
 bool MeshtasticBleService::handleMqttProxyToRadio(const meshtastic_MqttClientProxyMessage& msg)
@@ -956,7 +1319,7 @@ void MeshtasticBleService::syncMqttProxySettings()
     settings.primary_downlink_enabled = cfg.primary_downlink_enabled;
     settings.secondary_uplink_enabled = cfg.secondary_uplink_enabled;
     settings.secondary_downlink_enabled = cfg.secondary_downlink_enabled;
-    settings.root = module_config_.mqtt.root[0] ? module_config_.mqtt.root : kDefaultMqttRoot;
+    settings.root = module_config_.mqtt.root[0] ? module_config_.mqtt.root : meshtastic_defaults::kDefaultMqttRoot;
     settings.primary_channel_id = channelDisplayName(ctx_, 0);
     settings.secondary_channel_id = channelDisplayName(ctx_, 1);
     mt->setMqttProxySettings(settings);

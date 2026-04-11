@@ -3,6 +3,7 @@
 #include "app/app_config.h"
 #include "ble/ble_uuids.h"
 #include "board/BoardBase.h"
+#include "chat/ble/meshtastic_defaults.h"
 #include "chat/ble/meshtastic_phone_core.h"
 #include "chat/domain/contact_types.h"
 #include "chat/infra/meshtastic/mt_codec_pb.h"
@@ -45,17 +46,10 @@ inline void ble_log(const char* fmt, ...)
     va_end(args);
     Serial.printf("[BLE] %s\n", buf);
 }
-constexpr uint32_t kConfigNonceOnlyConfig = 69420;
-constexpr uint32_t kConfigNonceOnlyNodes = 69421;
-
 constexpr size_t kMaxFromRadio = meshtastic_FromRadio_size;
 constexpr size_t kMaxToRadio = meshtastic_ToRadio_size;
-constexpr uint8_t kMaxMeshtasticChannels = 8;
 constexpr uint16_t kPreferredBleMtu = 517;
 constexpr bool kEnableFromRadioSync = false;
-constexpr uint32_t kOfficialMinAppVersion = 30200;
-constexpr uint32_t kOfficialDeviceStateVersion = 24;
-constexpr const char* kCompatFirmwareVersion = "2.7.4.0";
 
 const char* pairingModeName(meshtastic_Config_BluetoothConfig_PairingMode mode)
 {
@@ -83,17 +77,6 @@ constexpr const char* kBlePinKey = "pin";
 
 constexpr const char* kModulePrefsNs = "mt_mod";
 constexpr const char* kModuleBlobKey = "cfg";
-constexpr uint32_t kModuleConfigVersion = 1;
-
-constexpr const char* kDefaultMqttAddress = "mqtt.meshtastic.org";
-constexpr const char* kDefaultMqttUsername = "meshdev";
-constexpr const char* kDefaultMqttPassword = "large4cats";
-constexpr const char* kDefaultMqttRoot = "msh";
-constexpr bool kDefaultMqttEncryptionEnabled = true;
-constexpr bool kDefaultMqttTlsEnabled = false;
-constexpr uint32_t kDefaultMapPublishIntervalSecs = 60 * 60;
-constexpr uint32_t kDefaultDetectionMinBroadcastSecs = 45;
-constexpr uint32_t kDefaultAmbientCurrent = 10;
 
 uint8_t xorHash(const uint8_t* data, size_t len)
 {

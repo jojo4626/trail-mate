@@ -708,6 +708,17 @@ struct GpsRuntime::Impl
         status.sats_in_view = sat_count > 0
                                   ? static_cast<uint8_t>(std::min<std::size_t>(sat_count, 255U))
                                   : data.satellites;
+
+        // Ignore transient "used satellites" noise unless we also have an actual
+        // parser/view count. This prevents brief GSA-only updates from surfacing
+        // as fake SAT activity in the UI during unrelated events such as BLE
+        // connection setup.
+        if (sat_count == 0 && data.satellites == 0)
+        {
+            status.sats_in_use = 0;
+            status.sats_in_view = 0;
+        }
+
         status.hdop = parser.hdop.isValid() ? static_cast<float>(parser.hdop.hdop()) : 0.0f;
         status.fix = data.valid ? (data.has_alt ? ::gps::GnssFix::FIX3D : ::gps::GnssFix::FIX2D) : ::gps::GnssFix::NOFIX;
 

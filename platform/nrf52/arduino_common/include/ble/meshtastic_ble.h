@@ -71,6 +71,7 @@ class MeshtasticBleService final : public BleService,
     bool isBleConnected() const override;
     void notifyFromNum(uint32_t from_num) override;
     bool loadBluetoothConfig(meshtastic_Config_BluetoothConfig* out) const override;
+    void saveBluetoothConfig(const meshtastic_Config_BluetoothConfig& config) override;
     bool loadDeviceConnectionStatus(meshtastic_DeviceConnectionStatus* out) const override;
     bool loadModuleConfig(meshtastic_LocalModuleConfig* out) const override;
     void saveModuleConfig(const meshtastic_LocalModuleConfig& config) override;
@@ -90,6 +91,8 @@ class MeshtasticBleService final : public BleService,
     void clearToPhoneQueue();
     void prepareReadableFromRadio();
     void syncMqttProxySettings();
+    void markConfigSavePending(bool bluetooth_changed, bool module_changed);
+    void flushPendingConfigSaves(bool force = false);
     void applyBleSecurity();
     void requestPairingIfNeeded(uint16_t conn_handle);
     uint32_t effectivePasskey() const;
@@ -146,6 +149,10 @@ class MeshtasticBleService final : public BleService,
     volatile bool pending_from_radio_empty_log_ = false;
     volatile uint32_t pending_from_radio_read_from_num_ = 0;
     volatile uint16_t pending_from_radio_read_len_ = 0;
+    bool bluetooth_config_save_pending_ = false;
+    bool module_config_save_pending_ = false;
+    uint32_t config_save_due_ms_ = 0;
+    uint32_t last_ble_activity_ms_ = 0;
 };
 
 } // namespace ble

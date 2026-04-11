@@ -139,6 +139,11 @@ class MeshtasticPhoneCore
     meshtastic_LocalModuleConfig module_config_ = meshtastic_LocalModuleConfig_init_zero;
     char admin_canned_messages_[160] = {};
     char admin_ringtone_[96] = {};
+    meshtastic_ToRadio to_radio_scratch_ = meshtastic_ToRadio_init_zero;
+    meshtastic_AdminMessage admin_req_scratch_ = meshtastic_AdminMessage_init_zero;
+    meshtastic_AdminMessage admin_resp_scratch_ = meshtastic_AdminMessage_init_zero;
+    meshtastic_MeshPacket reply_packet_scratch_ = meshtastic_MeshPacket_init_zero;
+    meshtastic_MqttClientProxyMessage mqtt_proxy_scratch_ = meshtastic_MqttClientProxyMessage_init_zero;
     meshtastic_FromRadio from_radio_scratch_ = meshtastic_FromRadio_init_zero;
 };
 

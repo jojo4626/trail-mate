@@ -230,7 +230,7 @@ void refresh_gps_widget()
 
     char used_buf[16];
     std::snprintf(used_buf, sizeof(used_buf), "%u/%u",
-                  static_cast<unsigned>(gnss.sats_in_use),
+                  static_cast<unsigned>(has_snapshot ? gnss.sats_in_use : 0),
                   static_cast<unsigned>(has_snapshot ? sat_count : 0));
     set_label_text_if_changed(gps_ui.stat_values[1], used_buf);
 

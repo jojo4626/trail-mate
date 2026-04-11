@@ -15,6 +15,11 @@ namespace ble
 namespace
 {
 
+bool usbSerialWritable(std::size_t len)
+{
+    return static_cast<bool>(Serial) && Serial.dtr() != 0 && Serial.availableForWrite() >= static_cast<int>(len);
+}
+
 void bleManagerLog(const char* fmt, ...)
 {
     char buffer[160] = {};
@@ -22,7 +27,10 @@ void bleManagerLog(const char* fmt, ...)
     va_start(args, fmt);
     std::vsnprintf(buffer, sizeof(buffer), fmt, args);
     va_end(args);
-    Serial.println(buffer);
+    if (usbSerialWritable(std::strlen(buffer) + 2U))
+    {
+        Serial.println(buffer);
+    }
     Serial2.println(buffer);
 }
 
