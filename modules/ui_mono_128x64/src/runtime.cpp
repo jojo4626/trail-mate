@@ -2469,14 +2469,12 @@ void Runtime::renderConversation()
     constexpr int kConversationStartY = 10;
     constexpr int kBubbleGap = 1;
     constexpr int kBubbleWidth = 118;
-    const int bubble_h = (line_h * 2) + 1;
+    constexpr int kBubbleBodyBottomPadding = 2;
+    constexpr size_t kVisibleConversationBubbles = 2;
+    const int bubble_h = (line_h * 2) + 1 + kBubbleBodyBottomPadding;
     const int row_h = bubble_h + kBubbleGap;
     const int bubble_w = std::max(8, std::min(kBubbleWidth, display_.width() - 2));
-    const size_t visible = std::max<size_t>(
-        1U,
-        std::min(message_count_,
-                 static_cast<size_t>(std::max(1, (display_.height() - kConversationStartY + kBubbleGap) /
-                                                     std::max(1, row_h)))));
+    const size_t visible = std::min(message_count_, kVisibleConversationBubbles);
     const size_t selected_index = std::min(message_index_, message_count_ - 1U);
     size_t start = 0;
     if (message_count_ > visible)
@@ -2494,8 +2492,29 @@ void Runtime::renderConversation()
         const bool selected = (msg_index == selected_index);
         char sender[16] = {};
         char time_text[16] = {};
+        uint32_t display_timestamp = msg.timestamp;
+        if (selected && display_timestamp < 1700000000U)
+        {
+            for (size_t meta_index = 0; meta_index < kMessageMetaCapacity; ++meta_index)
+            {
+                const MessageMetaEntry& candidate = message_meta_[meta_index];
+                if (!candidate.used)
+                {
+                    continue;
+                }
+                if (candidate.protocol == msg.protocol &&
+                    candidate.channel == msg.channel &&
+                    candidate.from == msg.from &&
+                    candidate.msg_id == msg.msg_id &&
+                    candidate.rx_meta.rx_timestamp_s >= 1700000000U)
+                {
+                    display_timestamp = candidate.rx_meta.rx_timestamp_s;
+                    break;
+                }
+            }
+        }
         formatConversationSender(sender, sizeof(sender), msg, selected);
-        formatConversationTime(time_text, sizeof(time_text), msg.timestamp, selected);
+        formatConversationTime(time_text, sizeof(time_text), display_timestamp, selected);
 
         const int y = kConversationStartY + static_cast<int>(i * row_h);
         const bool is_self = (msg.from == 0);
@@ -3673,6 +3692,91 @@ void Runtime::buildMessageInfo()
         ++message_info_count_;
     };
 
+    auto fitUtf8Bytes = [](const char* text, size_t max_bytes)
+    {
+        if (!text || max_bytes == 0)
+        {
+            return static_cast<size_t>(0);
+        }
+
+        size_t used = 0;
+        while (text[used] != '\0')
+        {
+            const size_t char_len = utf8CharLength(static_cast<unsigned char>(text[used]));
+            if (used + char_len > max_bytes)
+            {
+                break;
+            }
+            used += char_len;
+        }
+        return used;
+    };
+
+    auto push_text_block = [this, &push_line, &fitUtf8Bytes](const char* value)
+    {
+        if (!value || message_info_count_ >= kMessageInfoLines)
+        {
+            return;
+        }
+
+        const int available_width = std::max(1, display_.width());
+        const size_t storage_limit = std::max<size_t>(1U, kMessageInfoWidth - 1U);
+
+        const char* cursor = value;
+        while (message_info_count_ < kMessageInfoLines)
+        {
+            const char* logical_end = cursor;
+            while (*logical_end != '\0' && *logical_end != '\n' && *logical_end != '\r')
+            {
+                ++logical_end;
+            }
+
+            const size_t logical_len = static_cast<size_t>(logical_end - cursor);
+            if (logical_len == 0)
+            {
+                push_line(" ");
+            }
+            else
+            {
+                std::string logical_line(cursor, logical_len);
+                const char* wrapped = logical_line.c_str();
+                while (*wrapped != '\0' && message_info_count_ < kMessageInfoLines)
+                {
+                    size_t keep_bytes = text_renderer_.clipTextToWidth(wrapped, available_width);
+                    if (keep_bytes == 0)
+                    {
+                        keep_bytes = utf8CharLength(static_cast<unsigned char>(*wrapped));
+                    }
+                    keep_bytes = std::min(keep_bytes, fitUtf8Bytes(wrapped, storage_limit));
+                    if (keep_bytes == 0)
+                    {
+                        keep_bytes = std::min(storage_limit, static_cast<size_t>(1));
+                    }
+
+                    char chunk[kMessageInfoWidth] = {};
+                    std::memcpy(chunk, wrapped, std::min(keep_bytes, sizeof(chunk) - 1));
+                    chunk[std::min(keep_bytes, sizeof(chunk) - 1)] = '\0';
+                    push_line(chunk);
+                    wrapped += keep_bytes;
+                }
+            }
+
+            if (*logical_end == '\0')
+            {
+                break;
+            }
+
+            if (*logical_end == '\r' && logical_end[1] == '\n')
+            {
+                cursor = logical_end + 2;
+            }
+            else
+            {
+                cursor = logical_end + 1;
+            }
+        }
+    };
+
     auto formatInfoTime = [this](uint32_t timestamp_s, char* out, size_t out_len)
     {
         if (!out || out_len == 0)
@@ -3732,7 +3836,8 @@ void Runtime::buildMessageInfo()
 
     if (!msg->text.empty())
     {
-        push_kv("TXT", msg->text.c_str());
+        push_section("TXT");
+        push_text_block(msg->text.c_str());
     }
 
     const MessageMetaEntry* meta = nullptr;
@@ -4777,7 +4882,14 @@ void Runtime::formatConversationTime(char* out, size_t out_len, uint32_t timesta
 
     const unsigned long hours = static_cast<unsigned long>((timestamp_s / 3600U) % 24U);
     const unsigned long minutes = static_cast<unsigned long>((timestamp_s / 60U) % 60U);
-    std::snprintf(out, out_len, "%02lu:%02lu", hours, minutes);
+    if (expanded)
+    {
+        std::snprintf(out, out_len, "--/-- %02lu:%02lu", hours, minutes);
+    }
+    else
+    {
+        std::snprintf(out, out_len, "%02lu:%02lu", hours, minutes);
+    }
 }
 
 void Runtime::formatConversationSender(char* out, size_t out_len, const chat::ChatMessage& msg, bool expanded) const
@@ -5011,7 +5123,8 @@ void Runtime::drawConversationBubble(int x, int y, int w, const char* sender, co
     }
 
     const int line_h = text_renderer_.lineHeight();
-    const int bubble_h = (line_h * 2) + 1;
+    constexpr int kBubbleBodyBottomPadding = 2;
+    const int bubble_h = (line_h * 2) + 1 + kBubbleBodyBottomPadding;
     drawFrame(display_, x, y, w, bubble_h);
 
     const int inner_x = x + 1;
