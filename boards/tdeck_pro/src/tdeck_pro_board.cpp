@@ -10,10 +10,10 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <ctime>
-#include <limits>
-#include <sys/time.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <limits>
+#include <sys/time.h>
 
 namespace boards::tdeck_pro
 {

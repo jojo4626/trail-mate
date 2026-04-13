@@ -10,8 +10,8 @@
 #include "chat/usecase/contact_service.h"
 #include "generated/meshtastic/mesh.pb.h"
 #include "generated/meshtastic/portnums.pb.h"
-#include "platform/ui/screen_runtime.h"
 #include "pb_encode.h"
+#include "platform/ui/screen_runtime.h"
 #include <algorithm>
 #include <array>
 #include <cctype>

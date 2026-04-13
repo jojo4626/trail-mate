@@ -1,5 +1,5 @@
-#include "platform/ui/settings_store.h"
 #include "platform/nrf52/arduino_common/internal_fs_utils.h"
+#include "platform/ui/settings_store.h"
 
 #include <Arduino.h>
 #include <InternalFileSystem.h>

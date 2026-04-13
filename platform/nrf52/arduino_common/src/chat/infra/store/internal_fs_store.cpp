@@ -2,10 +2,10 @@
 
 #include <InternalFileSystem.h>
 
+#include "sys/clock.h"
 #include <algorithm>
 #include <cstring>
 #include <string>
-#include "sys/clock.h"
 
 namespace platform::nrf52::arduino_common::chat::infra::store
 {

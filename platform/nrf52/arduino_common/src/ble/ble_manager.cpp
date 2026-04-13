@@ -6,9 +6,9 @@
 #include "chat/runtime/self_identity_policy.h"
 
 #include <Arduino.h>
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
-#include <cstdarg>
 
 namespace ble
 {

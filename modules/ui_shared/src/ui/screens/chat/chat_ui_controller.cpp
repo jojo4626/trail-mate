@@ -14,15 +14,15 @@
 #include "sys/event_bus.h"
 #include "team/protocol/team_location_marker.h"
 #include "team/usecase/team_controller.h"
-#include "ui/page/page_profile.h"
 #include "ui/assets/fonts/fonts.h"
+#include "ui/page/page_profile.h"
 #include "ui/screens/team/team_ui_store.h"
 #include "ui/ui_common.h"
-#include "ui/widgets/system_notification.h"
 #include "ui/widgets/ime/ime_widget.h"
-#include <cstdlib>
+#include "ui/widgets/system_notification.h"
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 
 #ifndef CHAT_UI_LOG_ENABLE

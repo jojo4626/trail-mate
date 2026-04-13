@@ -803,9 +803,9 @@ static const chat::contacts::NodeInfo* get_selected_node()
     }
     const auto& list = (g_contacts_state.current_mode == ContactsMode::Contacts)
                            ? g_contacts_state.contacts_list
-                           : (g_contacts_state.current_mode == ContactsMode::Nearby)
-                                 ? g_contacts_state.nearby_list
-                                 : g_contacts_state.ignored_list;
+                       : (g_contacts_state.current_mode == ContactsMode::Nearby)
+                           ? g_contacts_state.nearby_list
+                           : g_contacts_state.ignored_list;
     if (g_contacts_state.selected_index >= static_cast<int>(list.size()))
     {
         return nullptr;
