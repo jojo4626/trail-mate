@@ -1357,6 +1357,36 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
                                   ((header.flags & ::chat::meshtastic::PACKET_FLAGS_VIA_MQTT_MASK) != 0);
                 update.has_is_ignored = true;
                 update.is_ignored = node.is_ignored;
+                if (node.has_position && ::chat::meshtastic::hasValidPosition(node.position))
+                {
+                    update.has_position = true;
+                    update.position.valid = true;
+                    update.position.latitude_i = node.position.latitude_i;
+                    update.position.longitude_i = node.position.longitude_i;
+                    update.position.has_altitude = node.position.has_altitude;
+                    update.position.altitude = node.position.altitude;
+                    update.position.timestamp =
+                        node.position.timestamp != 0 ? node.position.timestamp : node.position.time;
+                    update.position.precision_bits = node.position.precision_bits;
+                    update.position.pdop = node.position.PDOP;
+                    update.position.hdop = node.position.HDOP;
+                    update.position.vdop = node.position.VDOP;
+                    update.position.gps_accuracy_mm = node.position.gps_accuracy;
+                }
+                if (node.has_device_metrics)
+                {
+                    update.has_device_metrics = true;
+                    update.device_metrics.has_battery_level = node.device_metrics.has_battery_level;
+                    update.device_metrics.battery_level = node.device_metrics.battery_level;
+                    update.device_metrics.has_voltage = node.device_metrics.has_voltage;
+                    update.device_metrics.voltage = node.device_metrics.voltage;
+                    update.device_metrics.has_channel_utilization = node.device_metrics.has_channel_utilization;
+                    update.device_metrics.channel_utilization = node.device_metrics.channel_utilization;
+                    update.device_metrics.has_air_util_tx = node.device_metrics.has_air_util_tx;
+                    update.device_metrics.air_util_tx = node.device_metrics.air_util_tx;
+                    update.device_metrics.has_uptime_seconds = node.device_metrics.has_uptime_seconds;
+                    update.device_metrics.uptime_seconds = node.device_metrics.uptime_seconds;
+                }
 
                 if (node.has_user)
                 {
