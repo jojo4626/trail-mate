@@ -12,7 +12,7 @@ namespace chat
 {
 class ChatService;
 class IMeshAdapter;
-}
+} // namespace chat
 
 namespace boards::gat562_mesh_evb_pro
 {

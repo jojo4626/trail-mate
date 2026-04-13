@@ -3,13 +3,13 @@
 #define XPOWERS_CHIP_BQ25896
 
 #include <Adafruit_TCA8418.h>
-#include <GxEPD2_BW.h>
 #include <GaugeBQ27220.hpp>
+#include <GxEPD2_BW.h>
 #include <RadioLib.h>
+#include <SPI.h>
 #include <SensorBHI260AP.hpp>
 #include <TouchDrvCSTXXX.hpp>
 #include <XPowersLib.h>
-#include <SPI.h>
 #include <memory>
 #include <vector>
 
