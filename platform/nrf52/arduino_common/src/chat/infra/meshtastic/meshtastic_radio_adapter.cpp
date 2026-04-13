@@ -967,18 +967,19 @@ bool MeshtasticRadioAdapter::handleMqttProxyMessage(const meshtastic_MqttClientP
         return false;
     }
 
-    meshtastic_MeshPacket packet = meshtastic_MeshPacket_init_zero;
-    char channel_id[32] = {0};
-    char gateway_id[16] = {0};
+    auto& scratch = mqtt_scratch_;
+    std::memset(&scratch.packet, 0, sizeof(scratch.packet));
+    std::memset(scratch.channel_id, 0, sizeof(scratch.channel_id));
+    std::memset(scratch.gateway_id, 0, sizeof(scratch.gateway_id));
     if (!decodeMqttServiceEnvelope(data_field->bytes, data_field->size,
-                                   &packet,
-                                   channel_id, sizeof(channel_id),
-                                   gateway_id, sizeof(gateway_id)))
+                                   &scratch.packet,
+                                   scratch.channel_id, sizeof(scratch.channel_id),
+                                   scratch.gateway_id, sizeof(scratch.gateway_id)))
     {
         return false;
     }
 
-    return injectMqttEnvelope(packet, channel_id, gateway_id);
+    return injectMqttEnvelope(scratch.packet, scratch.channel_id, scratch.gateway_id);
 }
 
 bool MeshtasticRadioAdapter::pollIncomingRawPacket(uint8_t* out_data, size_t& out_len, size_t max_len)
@@ -1010,9 +1011,17 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
         has_pending_raw_packet_ = true;
     }
 
-    ::chat::meshtastic::PacketHeaderWire header{};
-    uint8_t payload[256] = {};
-    size_t payload_size = sizeof(payload);
+    // Keep large protobuf scratch buffers off the task stack. This path can nest
+    // MQTT proxy packaging and BLE forwarding on nRF52.
+    auto& rx = rx_scratch_;
+    std::memset(&rx.header, 0, sizeof(rx.header));
+    std::fill(rx.payload.begin(), rx.payload.end(), 0);
+    std::fill(rx.plain.begin(), rx.plain.end(), 0);
+    std::memset(&rx.decoded, 0, sizeof(rx.decoded));
+
+    auto& header = rx.header;
+    uint8_t* payload = rx.payload.data();
+    size_t payload_size = rx.payload.size();
     if (!::chat::meshtastic::parseWirePacket(data, size, &header, payload, &payload_size))
     {
         logMeshtasticRx("[gat562][mt] parse fail len=%u\n", static_cast<unsigned>(size));
@@ -1034,8 +1043,8 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
         }
     }
 
-    uint8_t plain[256] = {};
-    size_t plain_len = sizeof(plain);
+    uint8_t* plain = rx.plain.data();
+    size_t plain_len = rx.plain.size();
     ::chat::ChannelId channel = ::chat::ChannelId::PRIMARY;
     size_t key_len = 0;
     const uint8_t* key = selectKeyByHash(config_, header.channel, &key_len, &channel);
@@ -1043,7 +1052,7 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
     const uint8_t secondary_hash = channelHashFor(config_, ::chat::ChannelId::SECONDARY);
     const bool want_ack_flag = (header.flags & ::chat::meshtastic::PACKET_FLAGS_WANT_ACK_MASK) != 0;
 
-    meshtastic_Data decoded = meshtastic_Data_init_zero;
+    auto& decoded = rx.decoded;
     bool decoded_ok = false;
 
     if (header.channel == 0)
@@ -1519,21 +1528,45 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
         return;
     }
 
+    const bool is_text_port =
+        decoded_ok &&
+        (decoded.portnum == meshtastic_PortNum_TEXT_MESSAGE_APP ||
+         decoded.portnum == meshtastic_PortNum_TEXT_MESSAGE_COMPRESSED_APP);
+    const bool text_compressed =
+        decoded_ok && (decoded.portnum == meshtastic_PortNum_TEXT_MESSAGE_COMPRESSED_APP);
+
+    if (is_text_port)
+    {
+        logMeshtasticRx("[gat562][mt][text] rx from=%08lX to=%08lX id=%lu port=%u payload=%u plain=%u compressed=%u encrypted=%u\n",
+                        static_cast<unsigned long>(header.from),
+                        static_cast<unsigned long>(header.to),
+                        static_cast<unsigned long>(header.id),
+                        static_cast<unsigned>(decoded.portnum),
+                        static_cast<unsigned>(decoded.payload.size),
+                        static_cast<unsigned>(plain_len),
+                        text_compressed ? 1U : 0U,
+                        key_len > 0 ? 1U : 0U);
+    }
+
     ::chat::MeshIncomingText incoming{};
-    if (::chat::meshtastic::decodeTextMessage(plain, plain_len, &incoming))
+    if (decoded_ok && ::chat::meshtastic::decodeTextPayload(decoded, &incoming))
     {
         incoming.from = header.from;
         incoming.to = header.to;
         incoming.msg_id = header.id;
         incoming.channel = channel;
+        incoming.timestamp = (rx_meta.rx_timestamp_s != 0) ? rx_meta.rx_timestamp_s : nowSeconds();
         incoming.encrypted = key_len > 0;
         incoming.hop_limit = hop_limit;
         incoming.rx_meta = rx_meta;
 
-        logMeshtasticRx("[gat562][mt] text queued from=%08lX to=%08lX id=%lu len=%u text=\"%s\"\n",
+        logMeshtasticRx("[gat562][mt] text queued from=%08lX to=%08lX id=%lu port=%u payload=%u compressed=%u len=%u text=\"%s\"\n",
                         static_cast<unsigned long>(incoming.from),
                         static_cast<unsigned long>(incoming.to),
                         static_cast<unsigned long>(incoming.msg_id),
+                        static_cast<unsigned>(decoded.portnum),
+                        static_cast<unsigned>(decoded.payload.size),
+                        text_compressed ? 1U : 0U,
                         static_cast<unsigned>(incoming.text.size()),
                         incoming.text.c_str());
 
@@ -1541,19 +1574,19 @@ void MeshtasticRadioAdapter::handleRawPacket(const uint8_t* data, size_t size)
         return;
     }
 
-    if (decoded_ok &&
-        (decoded.portnum == meshtastic_PortNum_TEXT_MESSAGE_APP ||
-         decoded.portnum == meshtastic_PortNum_TEXT_MESSAGE_COMPRESSED_APP))
+    if (is_text_port)
     {
-        logMeshtasticRx("[gat562][mt] text decode fail from=%08lX id=%lu payload=%u plain=%u\n",
+        logMeshtasticRx("[gat562][mt] text decode fail from=%08lX id=%lu port=%u payload=%u plain=%u compressed=%u\n",
                         static_cast<unsigned long>(header.from),
                         static_cast<unsigned long>(header.id),
+                        static_cast<unsigned>(decoded.portnum),
                         static_cast<unsigned>(decoded.payload.size),
-                        static_cast<unsigned>(plain_len));
+                        static_cast<unsigned>(plain_len),
+                        text_compressed ? 1U : 0U);
     }
 
     ::chat::MeshIncomingData app_data{};
-    if (::chat::meshtastic::decodeAppData(plain, plain_len, &app_data))
+    if (decoded_ok && ::chat::meshtastic::decodeAppPayload(decoded, &app_data))
     {
         app_data.from = header.from;
         app_data.to = header.to;
@@ -3170,7 +3203,9 @@ bool MeshtasticRadioAdapter::injectMqttEnvelope(const meshtastic_MeshPacket& pac
         }
     }
 
-    uint8_t wire_buffer[sizeof(::chat::meshtastic::PacketHeaderWire) + 256] = {};
+    auto& scratch = mqtt_scratch_;
+    std::fill(scratch.wire.begin(), scratch.wire.end(), 0);
+    uint8_t* wire_buffer = scratch.wire.data();
     size_t wire_size = sizeof(::chat::meshtastic::PacketHeaderWire);
 
     if (packet.which_payload_variant == meshtastic_MeshPacket_encrypted_tag)
@@ -3194,7 +3229,7 @@ bool MeshtasticRadioAdapter::injectMqttEnvelope(const meshtastic_MeshPacket& pac
 
         const size_t enc_size =
             std::min(static_cast<size_t>(packet.encrypted.size), sizeof(packet.encrypted.bytes));
-        if (wire_size + enc_size > sizeof(wire_buffer))
+        if (wire_size + enc_size > scratch.wire.size())
         {
             return false;
         }
@@ -3203,13 +3238,15 @@ bool MeshtasticRadioAdapter::injectMqttEnvelope(const meshtastic_MeshPacket& pac
     }
     else
     {
-        meshtastic_Data decoded = packet.decoded;
+        std::memset(&scratch.decoded, 0, sizeof(scratch.decoded));
+        scratch.decoded = packet.decoded;
+        meshtastic_Data& decoded = scratch.decoded;
         decoded.dest = packet.to;
         decoded.source = packet.from;
         decoded.has_bitfield = true;
 
-        uint8_t data_buffer[256] = {};
-        pb_ostream_t dstream = pb_ostream_from_buffer(data_buffer, sizeof(data_buffer));
+        std::fill(scratch.buffer.begin(), scratch.buffer.end(), 0);
+        pb_ostream_t dstream = pb_ostream_from_buffer(scratch.buffer.data(), scratch.buffer.size());
         if (!pb_encode(&dstream, meshtastic_Data_fields, &decoded))
         {
             return false;
@@ -3217,8 +3254,8 @@ bool MeshtasticRadioAdapter::injectMqttEnvelope(const meshtastic_MeshPacket& pac
 
         size_t psk_len = 0;
         const uint8_t* psk = selectKey(config_, channel_index, &psk_len);
-        size_t rebuilt_size = sizeof(wire_buffer);
-        if (!::chat::meshtastic::buildWirePacket(data_buffer, dstream.bytes_written,
+        size_t rebuilt_size = scratch.wire.size();
+        if (!::chat::meshtastic::buildWirePacket(scratch.buffer.data(), dstream.bytes_written,
                                                  packet.from, packet.id,
                                                  packet.to, channel_hash, packet.hop_limit, packet.want_ack,
                                                  psk, psk_len, wire_buffer, &rebuilt_size))
@@ -3251,28 +3288,28 @@ bool MeshtasticRadioAdapter::queueMqttProxyPublish(const meshtastic_MeshPacket& 
         return false;
     }
 
-    uint8_t env_buf[435] = {};
-    meshtastic_MeshPacket packet_copy = packet;
+    auto& scratch = mqtt_scratch_;
+    std::memset(&scratch.proxy, 0, sizeof(scratch.proxy));
     std::string node_id = mqttNodeIdString();
     meshtastic_ServiceEnvelope env = meshtastic_ServiceEnvelope_init_zero;
-    env.packet = &packet_copy;
+    env.packet = const_cast<meshtastic_MeshPacket*>(&packet);
     env.channel_id = const_cast<char*>(channel_id);
     env.gateway_id = const_cast<char*>(node_id.c_str());
 
-    pb_ostream_t estream = pb_ostream_from_buffer(env_buf, sizeof(env_buf));
+    pb_ostream_t estream = pb_ostream_from_buffer(scratch.proxy.payload_variant.data.bytes,
+                                                  sizeof(scratch.proxy.payload_variant.data.bytes));
     if (!pb_encode(&estream, meshtastic_ServiceEnvelope_fields, &env))
     {
         return false;
     }
 
-    meshtastic_MqttClientProxyMessage proxy = meshtastic_MqttClientProxyMessage_init_zero;
+    meshtastic_MqttClientProxyMessage& proxy = scratch.proxy;
     proxy.which_payload_variant = meshtastic_MqttClientProxyMessage_data_tag;
     const std::string root = mqtt_proxy_settings_.root.empty() ? std::string("msh") : mqtt_proxy_settings_.root;
     const std::string topic = root + "/2/e/" + channel_id + "/" + node_id;
     std::strncpy(proxy.topic, topic.c_str(), sizeof(proxy.topic) - 1);
     proxy.topic[sizeof(proxy.topic) - 1] = '\0';
     proxy.payload_variant.data.size = static_cast<pb_size_t>(estream.bytes_written);
-    std::memcpy(proxy.payload_variant.data.bytes, env_buf, estream.bytes_written);
     proxy.retained = false;
 
     while (mqtt_proxy_queue_.size() >= kMaxMqttProxyQueue)
@@ -3280,6 +3317,14 @@ bool MeshtasticRadioAdapter::queueMqttProxyPublish(const meshtastic_MeshPacket& 
         mqtt_proxy_queue_.pop();
     }
     mqtt_proxy_queue_.push(proxy);
+    logMeshtasticRx("[gat562][mt][mqtt] queued topic=%s env=%u variant=%u port=%u q=%u\n",
+                    proxy.topic,
+                    static_cast<unsigned>(proxy.payload_variant.data.size),
+                    static_cast<unsigned>(packet.which_payload_variant),
+                    packet.which_payload_variant == meshtastic_MeshPacket_decoded_tag
+                        ? static_cast<unsigned>(packet.decoded.portnum)
+                        : 0U,
+                    static_cast<unsigned>(mqtt_proxy_queue_.size()));
     return true;
 }
 
@@ -3294,9 +3339,10 @@ bool MeshtasticRadioAdapter::queueMqttProxyPublishFromWire(const uint8_t* wire_d
     }
 
     ::chat::meshtastic::PacketHeaderWire header{};
-    uint8_t payload[256] = {};
-    size_t payload_size = sizeof(payload);
-    if (!::chat::meshtastic::parseWirePacket(wire_data, wire_size, &header, payload, &payload_size))
+    auto& scratch = mqtt_scratch_;
+    std::fill(scratch.buffer.begin(), scratch.buffer.end(), 0);
+    size_t payload_size = scratch.buffer.size();
+    if (!::chat::meshtastic::parseWirePacket(wire_data, wire_size, &header, scratch.buffer.data(), &payload_size))
     {
         return false;
     }
@@ -3316,12 +3362,12 @@ bool MeshtasticRadioAdapter::queueMqttProxyPublishFromWire(const uint8_t* wire_d
 
     if (mqtt_proxy_settings_.encryption_enabled)
     {
-        meshtastic_MeshPacket encrypted_packet = meshtastic_MeshPacket_init_zero;
-        if (!makeEncryptedPacketFromWire(wire_data, wire_size, &encrypted_packet))
+        std::memset(&scratch.packet, 0, sizeof(scratch.packet));
+        if (!makeEncryptedPacketFromWire(wire_data, wire_size, &scratch.packet))
         {
             return false;
         }
-        return queueMqttProxyPublish(encrypted_packet, channel_id);
+        return queueMqttProxyPublish(scratch.packet, channel_id);
     }
 
     if (!decoded)
@@ -3329,9 +3375,9 @@ bool MeshtasticRadioAdapter::queueMqttProxyPublishFromWire(const uint8_t* wire_d
         return false;
     }
 
-    meshtastic_MeshPacket decoded_packet = meshtastic_MeshPacket_init_zero;
-    fillDecodedPacketCommon(&decoded_packet, *decoded, header, channel_index);
-    return queueMqttProxyPublish(decoded_packet, channel_id);
+    std::memset(&scratch.packet, 0, sizeof(scratch.packet));
+    fillDecodedPacketCommon(&scratch.packet, *decoded, header, channel_index);
+    return queueMqttProxyPublish(scratch.packet, channel_id);
 }
 
 } // namespace platform::nrf52::arduino_common::chat::meshtastic

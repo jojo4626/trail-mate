@@ -115,6 +115,25 @@ class MeshtasticRadioAdapter final : public ::chat::IMeshAdapter
         std::array<uint8_t, 384> wire{};
     };
 
+    struct RxScratchBuffers
+    {
+        ::chat::meshtastic::PacketHeaderWire header{};
+        std::array<uint8_t, 256> payload{};
+        std::array<uint8_t, 256> plain{};
+        meshtastic_Data decoded = meshtastic_Data_init_zero;
+    };
+
+    struct MqttScratchBuffers
+    {
+        std::array<uint8_t, 256> buffer{};
+        std::array<uint8_t, sizeof(::chat::meshtastic::PacketHeaderWire) + 256> wire{};
+        char channel_id[32] = {};
+        char gateway_id[16] = {};
+        meshtastic_Data decoded = meshtastic_Data_init_zero;
+        meshtastic_MeshPacket packet = meshtastic_MeshPacket_init_zero;
+        meshtastic_MqttClientProxyMessage proxy = meshtastic_MqttClientProxyMessage_init_zero;
+    };
+
     ::chat::runtime::EffectiveSelfIdentity buildEffectiveIdentity() const;
     bool transmitWire(const uint8_t* data, size_t size);
     bool transmitPreparedWire(uint8_t* data, size_t size, ::chat::ChannelId channel,
@@ -251,6 +270,8 @@ class MeshtasticRadioAdapter final : public ::chat::IMeshAdapter
     std::map<::chat::NodeId, uint32_t> nodeinfo_last_seen_ms_;
     uint32_t last_position_reply_ms_ = 0;
     TxScratchBuffers tx_scratch_{};
+    RxScratchBuffers rx_scratch_{};
+    MqttScratchBuffers mqtt_scratch_{};
 
     enum class KeyVerificationState : uint8_t
     {

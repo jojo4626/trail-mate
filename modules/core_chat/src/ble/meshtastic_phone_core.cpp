@@ -14,7 +14,6 @@
 #include "sys/clock.h"
 
 #include <Arduino.h>
-#include <rtos.h>
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -23,6 +22,21 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+
+#if defined(__has_include)
+#if __has_include(<rtos.h>)
+#include <rtos.h>
+#define TRAIL_MATE_HAS_RTOS_TASK_INTROSPECTION 1
+#elif __has_include("freertos/FreeRTOS.h") && __has_include("freertos/task.h")
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#define TRAIL_MATE_HAS_RTOS_TASK_INTROSPECTION 1
+#else
+#define TRAIL_MATE_HAS_RTOS_TASK_INTROSPECTION 0
+#endif
+#else
+#define TRAIL_MATE_HAS_RTOS_TASK_INTROSPECTION 0
+#endif
 
 namespace ble
 {
@@ -335,6 +349,7 @@ uint8_t channelIndexFromId(chat::ChannelId channel)
 
 void logRuntimeFootprint(const char* stage)
 {
+#if TRAIL_MATE_HAS_RTOS_TASK_INTROSPECTION
     const char* task_name = pcTaskGetName(nullptr);
     const unsigned long stack_hwm =
         static_cast<unsigned long>(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t));
@@ -342,6 +357,10 @@ void logRuntimeFootprint(const char* stage)
             stage ? stage : "unknown",
             task_name ? task_name : "?",
             stack_hwm);
+#else
+    logDual("[BLE][mtcore][rt] stage=%s task=? stack_hwm=0\n",
+            stage ? stage : "unknown");
+#endif
 }
 
 const char* configStageName(uint32_t nonce)

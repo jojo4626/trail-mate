@@ -741,10 +741,9 @@ void MeshtasticBleService::handleToPhone()
         return;
     }
 
-    Frame frame{};
+    Frame* frame = &pending_to_phone_;
     if (pending_to_phone_valid_)
     {
-        frame = pending_to_phone_;
     }
     else
     {
@@ -757,8 +756,9 @@ void MeshtasticBleService::handleToPhone()
             return;
         }
 
-        MeshtasticBleFrame session_frame{};
-        if (!phone_session_->popToPhone(&session_frame))
+        *frame = Frame{};
+        session_frame_scratch_ = MeshtasticBleFrame{};
+        if (!phone_session_->popToPhone(&session_frame_scratch_))
         {
             if (waiting_for_read && in_send_packets)
             {
@@ -767,12 +767,12 @@ void MeshtasticBleService::handleToPhone()
             return;
         }
 
-        if (session_frame.len == 0 || session_frame.len > frame.buf.size())
+        if (session_frame_scratch_.len == 0 || session_frame_scratch_.len > frame->buf.size())
         {
             bleLogBoth("[BLE][nrf52][mt] drop oversize to_phone frame from_num=%08lX len=%u max=%u",
-                       static_cast<unsigned long>(session_frame.from_num),
-                       static_cast<unsigned>(session_frame.len),
-                       static_cast<unsigned>(frame.buf.size()));
+                       static_cast<unsigned long>(session_frame_scratch_.from_num),
+                       static_cast<unsigned>(session_frame_scratch_.len),
+                       static_cast<unsigned>(frame->buf.size()));
             if (waiting_for_read && in_send_packets)
             {
                 read_waiting_.store(false);
@@ -780,21 +780,21 @@ void MeshtasticBleService::handleToPhone()
             return;
         }
 
-        frame.len = session_frame.len;
-        frame.from_num = session_frame.from_num;
-        std::memcpy(frame.buf.data(), session_frame.buf, session_frame.len);
+        frame->len = session_frame_scratch_.len;
+        frame->from_num = session_frame_scratch_.from_num;
+        std::memcpy(frame->buf.data(), session_frame_scratch_.buf, session_frame_scratch_.len);
     }
 
-    if (enqueueToPhoneFrame(frame))
+    if (enqueueToPhoneFrame(*frame))
     {
         pending_to_phone_valid_ = false;
         Serial2.printf("[BLE][nrf52][mt] to_phone enqueue from_num=%08lX len=%u q=%u\n",
-                       static_cast<unsigned long>(frame.from_num),
-                       static_cast<unsigned>(frame.len),
+                       static_cast<unsigned long>(frame->from_num),
+                       static_cast<unsigned>(frame->len),
                        static_cast<unsigned>(to_phone_count_));
         if (!waiting_for_read && (in_send_packets || config_flow_active))
         {
-            notifyFromNum(frame.from_num);
+            notifyFromNum(frame->from_num);
         }
         else if (can_prepare && !config_flow_active && to_phone_count_ < kToPhoneQueueDepth)
         {
@@ -803,11 +803,11 @@ void MeshtasticBleService::handleToPhone()
     }
     else
     {
-        pending_to_phone_ = frame;
+        pending_to_phone_ = *frame;
         pending_to_phone_valid_ = true;
         Serial2.printf("[BLE][nrf52][mt] to_phone defer from_num=%08lX len=%u\n",
-                       static_cast<unsigned long>(frame.from_num),
-                       static_cast<unsigned>(frame.len));
+                       static_cast<unsigned long>(frame->from_num),
+                       static_cast<unsigned>(frame->len));
     }
 }
 

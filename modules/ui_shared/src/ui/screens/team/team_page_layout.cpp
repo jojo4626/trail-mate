@@ -81,8 +81,11 @@ lv_obj_t* create_content(lv_obj_t* root)
     lv_obj_set_size(content, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_grow(content, 1);
     lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(content, profile.content_pad_left, 0);
-    lv_obj_set_style_pad_row(content, profile.content_row_pad, 0);
+    lv_obj_set_style_pad_left(content, profile.content_pad_left, 0);
+    lv_obj_set_style_pad_right(content, profile.content_pad_right, 0);
+    lv_obj_set_style_pad_top(content, profile.content_pad_top, 0);
+    lv_obj_set_style_pad_bottom(content, profile.content_pad_bottom, 0);
+    lv_obj_set_style_pad_row(content, profile.top_content_gap, 0);
     make_non_scrollable(content);
     return content;
 }
@@ -100,8 +103,14 @@ lv_obj_t* create_actions(lv_obj_t* content)
 {
     const auto& profile = ::ui::page_profile::current();
     lv_obj_t* actions = lv_obj_create(content);
+    lv_coord_t action_height = profile.list_item_height;
+    const lv_coord_t control_height = ::ui::page_profile::resolve_control_button_height();
+    if (control_height > action_height)
+    {
+        action_height = control_height;
+    }
     lv_obj_set_width(actions, LV_PCT(100));
-    lv_obj_set_height(actions, profile.action_bar_height);
+    lv_obj_set_height(actions, action_height + 8);
     lv_obj_set_flex_flow(actions, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(actions, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     make_non_scrollable(actions);

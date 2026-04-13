@@ -131,6 +131,7 @@ class MeshtasticBleService final : public BleService,
 
     bool pending_to_phone_valid_ = false;
     Frame pending_to_phone_{};
+    MeshtasticBleFrame session_frame_scratch_{};
 
     static constexpr uint8_t kToPhoneQueueDepth = 3;
     Frame to_phone_queue_[kToPhoneQueueDepth]{};

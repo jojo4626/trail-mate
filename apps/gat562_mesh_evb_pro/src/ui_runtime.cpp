@@ -14,6 +14,7 @@
 #include <Arduino.h>
 #include <InternalFileSystem.h>
 #include <ctime>
+#include <malloc.h>
 
 namespace apps::gat562_mesh_evb_pro::ui_runtime
 {
@@ -23,13 +24,20 @@ using Adafruit_LittleFS_Namespace::File;
 using boards::gat562_mesh_evb_pro::BoardInputEvent;
 using boards::gat562_mesh_evb_pro::BoardInputKey;
 constexpr uint32_t kProbeHoldMs = 900;
-constexpr uint32_t kGat562TotalRamBytes = 248832U;
 constexpr uint32_t kGat562FsTotalBytes = 7U * 4096U;
 const char kProbeAscii[] = "ABC123";
 const char kProbeCjk[] = "\xE4\xB8\xAD\xE6\x96\x87";
 const char kProbeSymbols[] = "\xE2\x94\x80\xE2\x96\x88\xE2\x96\xA0";
 
-extern "C" char* sbrk(int incr);
+extern "C"
+{
+extern uint32_t __data_start__[];
+extern unsigned char __HeapBase[];
+extern unsigned char __HeapLimit[];
+extern uint32_t __StackTop[];
+extern uint32_t __StackLimit[];
+int dbgStackUsed(void);
+}
 
 uint32_t now_ms() { return millis(); }
 time_t utc_now() { return static_cast<time_t>(sys::epoch_seconds_now()); }
@@ -48,15 +56,48 @@ ui::mono_128x64::HostCallbacks::ResourceUsage ram_usage()
 {
     ui::mono_128x64::HostCallbacks::ResourceUsage usage{};
     usage.available = true;
-    usage.total_bytes = kGat562TotalRamBytes;
+    const uintptr_t ram_begin = reinterpret_cast<uintptr_t>(__data_start__);
+    const uintptr_t heap_begin = reinterpret_cast<uintptr_t>(__HeapBase);
+    const uintptr_t heap_end = reinterpret_cast<uintptr_t>(__HeapLimit);
+    const uintptr_t stack_begin = reinterpret_cast<uintptr_t>(__StackLimit);
+    const uintptr_t stack_end = reinterpret_cast<uintptr_t>(__StackTop);
 
-    char stack_marker = 0;
-    const uintptr_t stack_ptr = reinterpret_cast<uintptr_t>(&stack_marker);
-    const uintptr_t heap_ptr = reinterpret_cast<uintptr_t>(sbrk(0));
-    if (stack_ptr > heap_ptr)
+    if (heap_begin <= ram_begin || heap_end < heap_begin || stack_end <= stack_begin || stack_end <= ram_begin)
     {
-        const uint32_t free_bytes = static_cast<uint32_t>(stack_ptr - heap_ptr);
-        usage.used_bytes = usage.total_bytes > free_bytes ? (usage.total_bytes - free_bytes) : 0U;
+        return usage;
+    }
+
+    const uint32_t static_bytes = static_cast<uint32_t>(heap_begin - ram_begin);
+    const uint32_t heap_total_bytes = static_cast<uint32_t>(heap_end - heap_begin);
+    const uint32_t isr_stack_total_bytes = static_cast<uint32_t>(stack_end - stack_begin);
+    usage.total_bytes = static_cast<uint32_t>(stack_end - ram_begin);
+
+    struct mallinfo heap_info = mallinfo();
+    uint32_t heap_used_bytes = 0;
+    if (heap_info.uordblks > 0)
+    {
+        heap_used_bytes = static_cast<uint32_t>(heap_info.uordblks);
+        if (heap_used_bytes > heap_total_bytes)
+        {
+            heap_used_bytes = heap_total_bytes;
+        }
+    }
+
+    int isr_stack_used = dbgStackUsed();
+    uint32_t isr_stack_used_bytes = 0;
+    if (isr_stack_used > 0)
+    {
+        isr_stack_used_bytes = static_cast<uint32_t>(isr_stack_used);
+        if (isr_stack_used_bytes > isr_stack_total_bytes)
+        {
+            isr_stack_used_bytes = isr_stack_total_bytes;
+        }
+    }
+
+    usage.used_bytes = static_bytes + heap_used_bytes + isr_stack_used_bytes;
+    if (usage.used_bytes > usage.total_bytes)
+    {
+        usage.used_bytes = usage.total_bytes;
     }
     return usage;
 }
