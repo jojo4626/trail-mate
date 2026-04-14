@@ -385,7 +385,7 @@ void MeshCorePhoneCore::handleCmdFrame(const uint8_t* data, size_t len)
 
         const char* display_name = long_name[0] != '\0' ? long_name : short_name;
         const size_t name_len = strnlen(display_name, long_name[0] != '\0' ? sizeof(long_name)
-                                                                          : sizeof(short_name));
+                                                                           : sizeof(short_name));
         const size_t copy_len = std::min(name_len, static_cast<size_t>(kMaxFrameSize - index));
         if (copy_len > 0)
         {

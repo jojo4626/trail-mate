@@ -1,8 +1,8 @@
 ﻿#include "../../include/ble/meshtastic_ble.h"
 
 #include "app/app_config.h"
-#include "ble/bluefruit_runtime.h"
 #include "ble/ble_uuids.h"
+#include "ble/bluefruit_runtime.h"
 #if defined(GAT562_MESH_EVB_PRO)
 #include "boards/gat562_mesh_evb_pro/settings_store.h"
 #endif
