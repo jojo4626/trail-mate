@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "app/app_facade_access.h"
+#include "ble/ble_manager.h"
 #include "platform/ui/device_runtime.h"
 #include "ui/menu/dashboard/dashboard_state.h"
 #include "ui/screens/team/team_ui_store.h"

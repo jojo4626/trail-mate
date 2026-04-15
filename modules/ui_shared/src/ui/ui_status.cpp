@@ -7,6 +7,7 @@
 
 #include "app/app_config.h"
 #include "app/app_facade_access.h"
+#include "ble/ble_manager.h"
 #include "chat/usecase/chat_service.h"
 #include "platform/ui/gps_runtime.h"
 #include "platform/ui/tracker_runtime.h"
