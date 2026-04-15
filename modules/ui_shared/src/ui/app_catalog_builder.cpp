@@ -13,7 +13,9 @@
 #include "ui/screens/pc_link/pc_link_page_shell.h"
 #endif
 #include "ui/screens/settings/settings_page_shell.h"
+#if !defined(TRAIL_MATE_ENABLE_SSTV) || TRAIL_MATE_ENABLE_SSTV
 #include "ui/screens/sstv/sstv_page_shell.h"
+#endif
 #if !defined(GAT562_NO_TEAM) || !GAT562_NO_TEAM
 #include "ui/screens/team/team_page_shell.h"
 #endif
@@ -48,7 +50,9 @@ extern "C"
 #if !defined(GAT562_NO_HOSTLINK) || !GAT562_NO_HOSTLINK
     extern const lv_image_dsc_t rf;
 #endif
+#if !defined(TRAIL_MATE_ENABLE_SSTV) || TRAIL_MATE_ENABLE_SSTV
     extern const lv_image_dsc_t sstv;
+#endif
     extern const lv_image_dsc_t Setting;
 #if !defined(GAT562_NO_HOSTLINK) || !GAT562_NO_HOSTLINK
     extern const lv_image_dsc_t img_usb;
@@ -106,10 +110,12 @@ ui::CallbackAppScreen s_pc_link_app("Data Exchange", &rf,
                                     pc_link::ui::shell::exit,
                                     &s_menu_host);
 #endif
+#if !defined(TRAIL_MATE_ENABLE_SSTV) || TRAIL_MATE_ENABLE_SSTV
 ui::CallbackAppScreen s_sstv_app("SSTV", &sstv,
                                  sstv_page::ui::shell::enter,
                                  sstv_page::ui::shell::exit,
                                  &s_menu_host);
+#endif
 #if !defined(GAT562_NO_HOSTLINK) || !GAT562_NO_HOSTLINK
 ui::CallbackAppScreen s_usb_app("USB Mass Storage", &img_usb,
                                 usb_storage::ui::shell::enter,
@@ -169,7 +175,9 @@ AppCatalog build(const FeatureFlags& flags)
         }
         if (flags.profile == CatalogProfile::PioDefault && flags.include_sstv)
         {
+#if !defined(TRAIL_MATE_ENABLE_SSTV) || TRAIL_MATE_ENABLE_SSTV
             add(&s_sstv_app);
+#endif
         }
         if (flags.include_energy_sweep)
         {
@@ -187,7 +195,9 @@ AppCatalog build(const FeatureFlags& flags)
         }
         if (flags.profile == CatalogProfile::IdfDefault && flags.include_sstv)
         {
+#if !defined(TRAIL_MATE_ENABLE_SSTV) || TRAIL_MATE_ENABLE_SSTV
             add(&s_sstv_app);
+#endif
         }
         if (flags.include_settings)
         {

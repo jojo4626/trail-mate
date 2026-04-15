@@ -301,6 +301,10 @@ class TLoRaPagerBoard : public BoardBase,
      * @brief Check if GPS is initialized and online
      */
     bool isGPSReady() const override { return isHardwareOnline(HW_GPS_ONLINE); }
+    bool hasSstvAudioInput() const override
+    {
+        return isHardwareOnline(HW_CODEC_ONLINE);
+    }
 
     /**
      * @brief Check if LoRa is initialized and online
