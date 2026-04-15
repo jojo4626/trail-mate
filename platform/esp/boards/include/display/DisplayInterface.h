@@ -51,6 +51,16 @@ typedef enum KeyboardState
     KEYBOARD_PRESSED,
 } KeyboardState_t;
 
+typedef enum InputNavKey
+{
+    INPUT_NAV_KEY_NONE = 0,
+    INPUT_NAV_KEY_LEFT,
+    INPUT_NAV_KEY_RIGHT,
+    INPUT_NAV_KEY_UP,
+    INPUT_NAV_KEY_DOWN,
+    INPUT_NAV_KEY_ENTER,
+} InputNavKey_t;
+
 typedef struct RotaryMsg
 {
     RotaryDir_t dir;
@@ -78,6 +88,12 @@ class LilyGo_Display
     }
     virtual uint8_t getPoint(int16_t* x, int16_t* y, uint8_t get_point) { return 0; }
     virtual int getKeyChar(char* c) { return -1; }
+    virtual bool hasNavKeys() { return false; }
+    virtual int getNavKey(uint32_t* key)
+    {
+        (void)key;
+        return -1;
+    }
     virtual bool hasTouch() { return false; }
     virtual bool hasEncoder() { return false; }
     virtual bool hasKeyboard() { return false; }
