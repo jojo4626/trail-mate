@@ -2076,7 +2076,6 @@ void Runtime::renderScreensaver()
 
     constexpr int kTopY = 1;
     constexpr int kTopDetailY = 9;
-    constexpr int kRamY = 17;
     constexpr int kTimeY = 24;
     constexpr int kSidePrimaryY = 27;
     constexpr int kSideSecondaryY = 35;
@@ -2092,8 +2091,6 @@ void Runtime::renderScreensaver()
     std::snprintf(top_detail_right, sizeof(top_detail_right), "MSG %s", unread_buf);
     const int top_detail_right_w = text_renderer_.measureTextWidth(top_detail_right);
     text_renderer_.drawText(display_, std::max(70, display_.width() - top_detail_right_w - 2), kTopDetailY, top_detail_right);
-    const int ram_w = text_renderer_.measureTextWidth(ram_buf);
-    text_renderer_.drawText(display_, std::max(64, display_.width() - ram_w - 2), kRamY, ram_buf);
 
     const int time_w = measureClockText(time_main_buf);
     const int time_x = std::max(0, (display_.width() - time_w) / 2);
@@ -2112,9 +2109,22 @@ void Runtime::renderScreensaver()
     char footer_right[24] = {};
     std::snprintf(footer_left, sizeof(footer_left), "ID %s", node_buf[0] ? node_buf : "--");
     std::snprintf(footer_right, sizeof(footer_right), "%s", tz_buf[0] ? tz_buf : "UTC+0");
-    drawTextClipped(3, kFooterY, 76, footer_left);
-    const int right_w = text_renderer_.measureTextWidth(footer_right);
-    text_renderer_.drawText(display_, std::max(80, display_.width() - right_w - 3), kFooterY, footer_right);
+    const int ram_w = text_renderer_.measureTextWidth(ram_buf);
+    const int ram_x = std::max(0, (display_.width() - ram_w) / 2);
+    const int footer_gap = 4;
+    const int footer_left_x = 0;
+    const int footer_left_w = std::max(0, ram_x - footer_gap - footer_left_x);
+    const int footer_right_x = std::min(display_.width(), ram_x + ram_w + footer_gap);
+    const int footer_right_w = std::max(0, display_.width() - footer_right_x);
+    if (footer_left_w > 0)
+    {
+        drawConversationText(footer_left_x, kFooterY, footer_left_w, footer_left, false, false);
+    }
+    text_renderer_.drawText(display_, ram_x, kFooterY, ram_buf);
+    if (footer_right_w > 0)
+    {
+        drawConversationText(footer_right_x, kFooterY, footer_right_w, footer_right, false, true);
+    }
 
     if (battery.available && battery.level >= 0 && battery.level <= 20)
     {
