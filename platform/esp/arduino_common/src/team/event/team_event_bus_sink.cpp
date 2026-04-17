@@ -1,7 +1,7 @@
 #include "platform/esp/arduino_common/team/event/team_event_bus_sink.h"
 
-#include "team/protocol/team_position.h"
 #include "sys/event_bus.h"
+#include "team/protocol/team_position.h"
 
 namespace team::infra
 {
@@ -31,8 +31,8 @@ void TeamEventBusSink::onTeamPosition(const TeamPositionEvent& event)
     team::proto::TeamPositionMessage msg;
     if (event.ctx.from != 0 &&
         team::proto::decodeTeamPositionMessage(event.payload.data(),
-                                              event.payload.size(),
-                                              &msg))
+                                               event.payload.size(),
+                                               &msg))
     {
         const uint32_t timestamp = (msg.ts != 0) ? msg.ts : event.ctx.timestamp;
         sys::EventBus::publish(

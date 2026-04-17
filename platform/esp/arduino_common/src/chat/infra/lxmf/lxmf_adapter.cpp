@@ -415,7 +415,8 @@ uint16_t mtuFromLinkSignalling(const uint8_t* signalling_bytes, size_t len)
     const uint32_t mtu =
         ((static_cast<uint32_t>(signalling_bytes[0]) << 16) |
          (static_cast<uint32_t>(signalling_bytes[1]) << 8) |
-         static_cast<uint32_t>(signalling_bytes[2])) & 0x1FFFFFU;
+         static_cast<uint32_t>(signalling_bytes[2])) &
+        0x1FFFFFU;
     return static_cast<uint16_t>(std::min<uint32_t>(mtu, reticulum::kReticulumMtu));
 }
 
@@ -1704,9 +1705,9 @@ bool LxmfAdapter::handleLinkDataPacket(LinkSession& session,
             if (session.destination == LocalDestinationKind::Propagation)
             {
                 handled = handlePropagationRequest(session,
-                                                  request,
-                                                  request_id,
-                                                  sizeof(request_id));
+                                                   request,
+                                                   request_id,
+                                                   sizeof(request_id));
             }
             else
             {
@@ -1868,7 +1869,7 @@ bool LxmfAdapter::handleLinkProofPacket(LinkSession& session,
         }
 
         std::array<uint8_t, reticulum::kTruncatedHashSize + LxmfIdentity::kEncPubKeySize +
-                               LxmfIdentity::kSigPubKeySize + kLinkSignallingLen>
+                                LxmfIdentity::kSigPubKeySize + kLinkSignallingLen>
             signed_data{};
         size_t used = 0;
         memcpy(signed_data.data() + used, session.link_id, reticulum::kTruncatedHashSize);
@@ -2128,7 +2129,8 @@ bool LxmfAdapter::handleLinkResourceRequest(LinkSession& session,
                                               reticulum::PacketContext::Resource,
                                               resource->parts[index].data(),
                                               resource->parts[index].size(),
-                                              false) || sent_any;
+                                              false) ||
+                               sent_any;
                 }
                 break;
             }
@@ -2161,10 +2163,10 @@ bool LxmfAdapter::handleLinkResourceRequest(LinkSession& session,
                 uint8_t update_payload[kMaxPacketLen] = {};
                 size_t update_len = sizeof(update_payload);
                 if (encodeResourceHashmapUpdate(segment,
-                                               resource->hashmap.data() + slice_offset,
-                                               slice_hashes * kResourceMapHashLen,
-                                               update_payload + reticulum::kFullHashSize,
-                                               &update_len))
+                                                resource->hashmap.data() + slice_offset,
+                                                slice_hashes * kResourceMapHashLen,
+                                                update_payload + reticulum::kFullHashSize,
+                                                &update_len))
                 {
                     memcpy(update_payload, resource->resource_hash, reticulum::kFullHashSize);
                     const size_t wire_len = reticulum::kFullHashSize + update_len;
@@ -2173,7 +2175,8 @@ bool LxmfAdapter::handleLinkResourceRequest(LinkSession& session,
                                               reticulum::PacketContext::ResourceHmu,
                                               update_payload,
                                               wire_len,
-                                              true) || sent_any;
+                                              true) ||
+                               sent_any;
                 }
             }
         }
@@ -3306,9 +3309,9 @@ bool LxmfAdapter::shouldRequestPath(const PeerInfo& peer) const
 }
 
 bool LxmfAdapter::buildSignedMessagePacket(const PeerInfo& peer,
-                                          const uint8_t* packed_payload, size_t packed_payload_len,
-                                          uint8_t* out_packet, size_t* inout_len,
-                                          uint8_t out_message_hash[reticulum::kFullHashSize])
+                                           const uint8_t* packed_payload, size_t packed_payload_len,
+                                           uint8_t* out_packet, size_t* inout_len,
+                                           uint8_t out_message_hash[reticulum::kFullHashSize])
 {
     if ((!packed_payload && packed_payload_len != 0) || !out_packet || !inout_len || !out_message_hash)
     {
@@ -4598,22 +4601,24 @@ void LxmfAdapter::publishPeerUpdate(const PeerInfo& peer) const
              static_cast<unsigned long>(peer.node_id & 0xFFFFUL));
 
     sys::EventBus::publish(new sys::NodeProtocolUpdateEvent(
-        peer.node_id,
-        peer.last_seen_s,
-        static_cast<uint8_t>(chat::contacts::NodeProtocolType::LXMF)), 0);
+                               peer.node_id,
+                               peer.last_seen_s,
+                               static_cast<uint8_t>(chat::contacts::NodeProtocolType::LXMF)),
+                           0);
 
     sys::EventBus::publish(new sys::NodeInfoUpdateEvent(
-        peer.node_id,
-        short_name,
-        peer.display_name[0] != '\0' ? peer.display_name : short_name,
-        raw_.lastRxSnr(),
-        raw_.lastRxRssi(),
-        peer.last_seen_s,
-        static_cast<uint8_t>(chat::contacts::NodeProtocolType::LXMF),
-        static_cast<uint8_t>(chat::contacts::NodeRoleType::Client),
-        0,
-        0,
-        0xFF), 0);
+                               peer.node_id,
+                               short_name,
+                               peer.display_name[0] != '\0' ? peer.display_name : short_name,
+                               raw_.lastRxSnr(),
+                               raw_.lastRxRssi(),
+                               peer.last_seen_s,
+                               static_cast<uint8_t>(chat::contacts::NodeProtocolType::LXMF),
+                               static_cast<uint8_t>(chat::contacts::NodeRoleType::Client),
+                               0,
+                               0,
+                               0xFF),
+                           0);
 }
 
 void LxmfAdapter::loadPersistedPeers()
