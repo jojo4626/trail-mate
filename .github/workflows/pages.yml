@@ -9,6 +9,7 @@ on:
       - docs/images/**
       - scripts/prepare_pages_site.py
       - scripts/webflash_targets.py
+      - .github/workflows/ci.yml
       - .github/workflows/pages.yml
   release:
     types:
