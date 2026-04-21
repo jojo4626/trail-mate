@@ -76,6 +76,39 @@ Gauge Design (mAh)	电池设计容量 (mAh)
 Gauge Full (mAh)	电池满充容量 (mAh)
 Good Find	发现目标
 GPS	GPS
+Extensions	扩展
+Language	语言
+Package Details	包详情
+Back to list	返回列表
+Install	安装
+Update	更新
+Uninstall	卸载
+Incompatible	不兼容
+Compatible with this device	与此设备兼容
+Compatibility: %s	兼容性：%s
+memory profile mismatch	内存配置不匹配
+needs %s	需要 %s
+Update available: %s	有可用更新：%s
+Installed	已安装
+Installed: %s	已安装：%s
+Available to install	可安装
+Blocked	已阻止
+%lu locales  %lu fonts  %lu IME  %s	%lu 个语言  %lu 个字体  %lu 个输入法  %s
+No Wi-Fi	无 Wi-Fi
+Installing package...	正在安装软件包...
+Package installed	软件包已安装
+Uninstalling package...	正在卸载软件包...
+Package uninstalled	软件包已卸载
+No language packs available	没有可用语言包
+Available language packs: %lu	可用语言包：%lu
+About	关于
+Package Info	软件包信息
+Contents	内容
+Source	来源
+Archive: %s\nExtra font RAM: %s\nProfiles: %s\n%s	压缩包：%s\n额外字体 RAM：%s\n配置：%s\n%s
+Locales: %s\nFonts: %s\nIME: %s	语言：%s\n字体：%s\n输入法：%s
+Author: %s\nHomepage: %s	作者：%s\n主页：%s
+None	无
 GPS Status	GPS 状态
 HDOP	HDOP
 Heading starting	航向启动中

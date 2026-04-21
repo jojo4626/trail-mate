@@ -25,6 +25,39 @@ English keyboard	Englische Tastatur
 Error	Fehler
 Factory Reset	Werkreset
 GPS	GPS
+Extensions	Erweiterungen
+Language	Sprache
+Package Details	Paketdetails
+Back to list	Zur Liste
+Install	Installieren
+Update	Aktualisieren
+Uninstall	Deinstallieren
+Incompatible	Inkompatibel
+Compatible with this device	Mit diesem Gerät kompatibel
+Compatibility: %s	Kompatibilität: %s
+memory profile mismatch	Speicherprofil stimmt nicht überein
+needs %s	benötigt %s
+Update available: %s	Update verfügbar: %s
+Installed	Installiert
+Installed: %s	Installiert: %s
+Available to install	Zur Installation verfügbar
+Blocked	Blockiert
+%lu locales  %lu fonts  %lu IME  %s	%lu Sprachen  %lu Schriftarten  %lu IME  %s
+No Wi-Fi	Kein Wi-Fi
+Installing package...	Paket wird installiert...
+Package installed	Paket installiert
+Uninstalling package...	Paket wird deinstalliert...
+Package uninstalled	Paket deinstalliert
+No language packs available	Keine Sprachpakete verfügbar
+Available language packs: %lu	Verfügbare Sprachpakete: %lu
+About	Über
+Package Info	Paketinfo
+Contents	Inhalt
+Source	Quelle
+Archive: %s\nExtra font RAM: %s\nProfiles: %s\n%s	Archiv: %s\nZusätzlicher Schrift-RAM: %s\nProfile: %s\n%s
+Locales: %s\nFonts: %s\nIME: %s	Sprachen: %s\nSchriftarten: %s\nIME: %s
+Author: %s\nHomepage: %s	Autor: %s\nHomepage: %s
+None	Keine
 GPS Status	GPS-Status
 Hide	Ausblenden
 Info	Info

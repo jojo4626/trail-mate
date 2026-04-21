@@ -25,6 +25,39 @@ English keyboard	Engels toetsenbord
 Error	Fout
 Factory Reset	Fabrieksreset
 GPS	GPS
+Extensions	Extensies
+Language	Taal
+Package Details	Pakketdetails
+Back to list	Terug naar lijst
+Install	Installeren
+Update	Bijwerken
+Uninstall	Verwijderen
+Incompatible	Niet compatibel
+Compatible with this device	Compatibel met dit apparaat
+Compatibility: %s	Compatibiliteit: %s
+memory profile mismatch	geheugenprofiel komt niet overeen
+needs %s	vereist %s
+Update available: %s	Update beschikbaar: %s
+Installed	Geïnstalleerd
+Installed: %s	Geïnstalleerd: %s
+Available to install	Beschikbaar om te installeren
+Blocked	Geblokkeerd
+%lu locales  %lu fonts  %lu IME  %s	%lu talen  %lu lettertypen  %lu IME  %s
+No Wi-Fi	Geen Wi-Fi
+Installing package...	Pakket installeren...
+Package installed	Pakket geïnstalleerd
+Uninstalling package...	Pakket verwijderen...
+Package uninstalled	Pakket verwijderd
+No language packs available	Geen taalpakketten beschikbaar
+Available language packs: %lu	Beschikbare taalpakketten: %lu
+About	Over
+Package Info	Pakketinformatie
+Contents	Inhoud
+Source	Bron
+Archive: %s\nExtra font RAM: %s\nProfiles: %s\n%s	Archief: %s\nExtra lettertype-RAM: %s\nProfielen: %s\n%s
+Locales: %s\nFonts: %s\nIME: %s	Talen: %s\nLettertypen: %s\nIME: %s
+Author: %s\nHomepage: %s	Auteur: %s\nHomepage: %s
+None	Geen
 GPS Status	GPS-status
 Hide	Verbergen
 Info	Info

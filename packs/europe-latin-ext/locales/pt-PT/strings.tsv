@@ -25,6 +25,39 @@ English keyboard	Teclado inglês
 Error	Erro
 Factory Reset	Repor de fábrica
 GPS	GPS
+Extensions	Extensões
+Language	Idioma
+Package Details	Detalhes do pacote
+Back to list	Voltar à lista
+Install	Instalar
+Update	Atualizar
+Uninstall	Desinstalar
+Incompatible	Incompatível
+Compatible with this device	Compatível com este dispositivo
+Compatibility: %s	Compatibilidade: %s
+memory profile mismatch	perfil de memória incompatível
+needs %s	requer %s
+Update available: %s	Atualização disponível: %s
+Installed	Instalado
+Installed: %s	Instalado: %s
+Available to install	Disponível para instalar
+Blocked	Bloqueado
+%lu locales  %lu fonts  %lu IME  %s	%lu idiomas  %lu tipos de letra  %lu IME  %s
+No Wi-Fi	Sem Wi-Fi
+Installing package...	A instalar pacote...
+Package installed	Pacote instalado
+Uninstalling package...	A desinstalar pacote...
+Package uninstalled	Pacote desinstalado
+No language packs available	Sem pacotes de idioma disponíveis
+Available language packs: %lu	Pacotes de idioma disponíveis: %lu
+About	Sobre
+Package Info	Informação do pacote
+Contents	Conteúdo
+Source	Origem
+Archive: %s\nExtra font RAM: %s\nProfiles: %s\n%s	Arquivo: %s\nRAM extra de tipos de letra: %s\nPerfis: %s\n%s
+Locales: %s\nFonts: %s\nIME: %s	Idiomas: %s\nTipos de letra: %s\nIME: %s
+Author: %s\nHomepage: %s	Autor: %s\nPágina inicial: %s
+None	Nenhum
 GPS Status	Estado GPS
 Hide	Ocultar
 Info	Info

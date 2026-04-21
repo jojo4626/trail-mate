@@ -54,6 +54,8 @@ lv_obj_t* s_app_panel = nullptr;
 lv_obj_t* s_grid_panel = nullptr;
 lv_obj_t* s_desc_label = nullptr;
 lv_obj_t* s_bottom_bar = nullptr;
+lv_obj_t* s_bottom_bar_left = nullptr;
+lv_obj_t* s_bottom_bar_right = nullptr;
 BottomBarChipUi s_bottom_node_chip{};
 BottomBarChipUi s_bottom_ram_chip{};
 BottomBarChipUi s_bottom_psram_chip{};
@@ -218,9 +220,7 @@ void menuNameLabelEventCallback(lv_event_t* e)
     const char* value = static_cast<const char*>(lv_event_get_param(e));
     if (value)
     {
-        lv_label_set_text(lv_event_get_target_obj(e), value);
-        ::ui::fonts::apply_localized_font(
-            lv_event_get_target_obj(e), value, ui::menu_profile::current().desc_font);
+        ::ui::i18n::set_label_text(lv_event_get_target_obj(e), value);
     }
 #else
     (void)e;
@@ -398,14 +398,13 @@ void createAppButton(lv_obj_t* parent, AppScreen* app, size_t idx)
     if (profile.show_card_label && name && name[0] != '\0')
     {
         lv_obj_t* label = lv_label_create(btn);
-        ::ui::i18n::set_label_text_raw(label, name);
         lv_obj_set_width(label, width - (profile.variant == ui::menu_profile::LayoutVariant::LargeTouchGrid ? 16 : 4));
         lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_font(label, profile.card_label_font, 0);
         lv_obj_set_style_text_color(label, lv_color_hex(0x6B4A1E), 0);
         lv_obj_set_style_text_color(label, lv_color_hex(0x6B4A1E), LV_STATE_FOCUSED);
         lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-        ::ui::fonts::apply_localized_font(label, name, profile.card_label_font);
+        ::ui::i18n::set_label_text(label, name);
         s_menu_apps[idx].label = label;
     }
 
@@ -499,6 +498,38 @@ BottomBarChipUi createBottomBarChip(lv_obj_t* parent,
     lv_label_set_text(chip.label, text ? text : "");
     lv_obj_center(chip.label);
     return chip;
+}
+
+lv_obj_t* createBottomBarGroup(lv_obj_t* parent)
+{
+    lv_obj_t* group = lv_obj_create(parent);
+    lv_obj_set_size(group, LV_SIZE_CONTENT, LV_PCT(100));
+    lv_obj_set_style_bg_opa(group, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(group, 0, 0);
+    lv_obj_set_style_radius(group, 0, 0);
+    lv_obj_set_style_shadow_width(group, 0, 0);
+    lv_obj_set_style_pad_all(group, 0, 0);
+    lv_obj_set_style_pad_column(group, 6, 0);
+    lv_obj_set_flex_flow(group, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(group, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(group, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(group, LV_OBJ_FLAG_CLICKABLE);
+    return group;
+}
+
+lv_obj_t* createBottomBarSpacer(lv_obj_t* parent)
+{
+    lv_obj_t* spacer = lv_obj_create(parent);
+    lv_obj_set_size(spacer, 0, LV_PCT(100));
+    lv_obj_set_flex_grow(spacer, 1);
+    lv_obj_set_style_bg_opa(spacer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(spacer, 0, 0);
+    lv_obj_set_style_radius(spacer, 0, 0);
+    lv_obj_set_style_shadow_width(spacer, 0, 0);
+    lv_obj_set_style_pad_all(spacer, 0, 0);
+    lv_obj_clear_flag(spacer, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(spacer, LV_OBJ_FLAG_CLICKABLE);
+    return spacer;
 }
 
 void setBottomBarChipText(const BottomBarChipUi& chip, const char* text)
@@ -645,7 +676,8 @@ void createAppGrid()
         lv_obj_add_flag(s_desc_label, LV_OBJ_FLAG_HIDDEN);
     }
     lv_obj_set_width(s_desc_label, LV_PCT(100));
-    lv_obj_align(s_desc_label, LV_ALIGN_BOTTOM_MID, 0, profile.desc_offset);
+    const lv_coord_t desc_offset = profile.desc_offset - (profile.show_node_id ? profile.top_bar_height : 0);
+    lv_obj_align(s_desc_label, LV_ALIGN_BOTTOM_MID, 0, desc_offset);
     lv_obj_set_style_text_align(s_desc_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(s_desc_label, ui::theme::text(), 0);
     lv_obj_set_style_text_font(s_desc_label, profile.desc_font, 0);
@@ -662,9 +694,9 @@ void createAppGrid()
     lv_obj_set_style_pad_right(s_bottom_bar, profile.top_bar_side_inset, 0);
     lv_obj_set_style_pad_top(s_bottom_bar, 0, 0);
     lv_obj_set_style_pad_bottom(s_bottom_bar, 0, 0);
-    lv_obj_set_style_pad_column(s_bottom_bar, 6, 0);
+    lv_obj_set_style_pad_column(s_bottom_bar, 0, 0);
     lv_obj_set_flex_flow(s_bottom_bar, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(s_bottom_bar, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(s_bottom_bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_align(s_bottom_bar, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_clear_flag(s_bottom_bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(s_bottom_bar, LV_OBJ_FLAG_CLICKABLE);
@@ -673,9 +705,13 @@ void createAppGrid()
         lv_obj_add_flag(s_bottom_bar, LV_OBJ_FLAG_HIDDEN);
     }
 
-    s_bottom_node_chip = createBottomBarChip(s_bottom_bar, profile, lv_color_hex(0xF1B75A), "-");
-    s_bottom_ram_chip = createBottomBarChip(s_bottom_bar, profile, lv_color_hex(0xCFE4FF), "--/--");
-    s_bottom_psram_chip = createBottomBarChip(s_bottom_bar, profile, lv_color_hex(0xD4F0D2), "--/--");
+    s_bottom_bar_left = createBottomBarGroup(s_bottom_bar);
+    createBottomBarSpacer(s_bottom_bar);
+    s_bottom_bar_right = createBottomBarGroup(s_bottom_bar);
+
+    s_bottom_node_chip = createBottomBarChip(s_bottom_bar_left, profile, lv_color_hex(0xF1B75A), "-");
+    s_bottom_ram_chip = createBottomBarChip(s_bottom_bar_right, profile, lv_color_hex(0xCFE4FF), "--/--");
+    s_bottom_psram_chip = createBottomBarChip(s_bottom_bar_right, profile, lv_color_hex(0xD4F0D2), "--/--");
 
     char node_id_buf[24];
     const uint32_t self_id = s_init_options.messaging ? s_init_options.messaging->getSelfNodeId() : 0;
@@ -740,7 +776,6 @@ void bringContentToFront()
 
 void refresh_localized_text()
 {
-    const auto& profile = ui::menu_profile::current();
     for (auto& item : s_menu_apps)
     {
         if (item.app == nullptr)
@@ -751,8 +786,7 @@ void refresh_localized_text()
         item.name = item.app->name();
         if (item.label != nullptr)
         {
-            ::ui::i18n::set_label_text_raw(item.label, item.name);
-            ::ui::fonts::apply_localized_font(item.label, item.name, profile.card_label_font);
+            ::ui::i18n::set_label_text(item.label, item.name);
         }
     }
 
@@ -762,8 +796,7 @@ void refresh_localized_text()
         const int index = findMenuButtonIndex(focused);
         if (index >= 0 && static_cast<size_t>(index) < kMaxMenuApps)
         {
-            ::ui::i18n::set_label_text_raw(s_desc_label, s_menu_apps[index].name);
-            ::ui::fonts::apply_localized_font(s_desc_label, s_menu_apps[index].name, profile.desc_font);
+            ::ui::i18n::set_label_text(s_desc_label, s_menu_apps[index].name);
         }
     }
 

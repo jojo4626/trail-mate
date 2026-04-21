@@ -140,7 +140,7 @@ std::string join_values(const std::vector<std::string>& values)
 {
     if (values.empty())
     {
-        return "None";
+        return ::ui::i18n::tr("None");
     }
 
     std::string joined;
@@ -183,32 +183,26 @@ std::string compatibility_text(const packs::PackageRecord& package)
 {
     if (package.compatible_firmware && package.compatible_memory_profile)
     {
-        return "Compatible with this device";
+        return ::ui::i18n::tr("Compatible with this device");
     }
 
-    std::string text = "Compatibility: ";
-    bool appended = false;
+    std::vector<std::string> issues;
     if (!package.compatible_memory_profile)
     {
-        text += "memory profile mismatch";
-        appended = true;
+        issues.emplace_back(::ui::i18n::tr("memory profile mismatch"));
     }
     if (!package.compatible_firmware)
     {
-        if (appended)
-        {
-            text += ", ";
-        }
-        text += ::ui::i18n::format("needs %s", package.min_firmware_version.c_str());
+        issues.emplace_back(::ui::i18n::format("needs %s", package.min_firmware_version.c_str()));
     }
-    return text;
+    return ::ui::i18n::format("Compatibility: %s", join_values(issues).c_str());
 }
 
 std::string state_text(const packs::PackageRecord& package)
 {
     if (!package.compatible_firmware || !package.compatible_memory_profile)
     {
-        return "Incompatible";
+        return ::ui::i18n::tr("Incompatible");
     }
     if (package.update_available)
     {
@@ -218,24 +212,24 @@ std::string state_text(const packs::PackageRecord& package)
     {
         return ::ui::i18n::format("Installed: %s", package.installed_record.version.c_str());
     }
-    return "Available to install";
+    return ::ui::i18n::tr("Available to install");
 }
 
 std::string state_badge_text(const packs::PackageRecord& package)
 {
     if (!package.compatible_firmware || !package.compatible_memory_profile)
     {
-        return "Blocked";
+        return ::ui::i18n::tr("Blocked");
     }
     if (package.update_available)
     {
-        return "Update";
+        return ::ui::i18n::tr("Update");
     }
     if (package.installed)
     {
-        return "Installed";
+        return ::ui::i18n::tr("Installed");
     }
-    return "Ready";
+    return ::ui::i18n::tr("Ready");
 }
 
 lv_color_t state_color(const packs::PackageRecord& package)
@@ -269,15 +263,15 @@ void update_top_bar_status()
     const platform::ui::wifi::Status wifi = platform::ui::wifi::status();
     if (!wifi.supported)
     {
-        ::ui::widgets::top_bar_set_right_text(s_runtime.top_bar, "No Wi-Fi");
+        ::ui::widgets::top_bar_set_right_text(s_runtime.top_bar, ::ui::i18n::tr("No Wi-Fi"));
         return;
     }
     if (!wifi.connected)
     {
-        ::ui::widgets::top_bar_set_right_text(s_runtime.top_bar, "Offline");
+        ::ui::widgets::top_bar_set_right_text(s_runtime.top_bar, ::ui::i18n::tr("Offline"));
         return;
     }
-    ::ui::widgets::top_bar_set_right_text(s_runtime.top_bar, "Online");
+    ::ui::widgets::top_bar_set_right_text(s_runtime.top_bar, ::ui::i18n::tr("Online"));
 }
 
 void set_header_title(const char* text)
@@ -550,8 +544,9 @@ void on_primary_action_clicked(lv_event_t* event)
     const packs::PackageRecord& package = s_runtime.packages[package_index];
     const std::string package_id = package.id;
     std::string error;
-    ScopedBusyOverlay overlay("Installing package...", package_id.c_str());
-    set_status_text("Installing package...");
+    const char* installing_text = ::ui::i18n::tr("Installing package...");
+    ScopedBusyOverlay overlay(installing_text, package_id.c_str());
+    set_status_text(installing_text);
     if (!packs::install_package(package, error))
     {
         set_status_text(error);
@@ -559,7 +554,7 @@ void on_primary_action_clicked(lv_event_t* event)
         return;
     }
 
-    ::ui::SystemNotification::show("Package installed", 2000);
+    ::ui::SystemNotification::show(::ui::i18n::tr("Package installed"), 2000);
     s_runtime.selected_package_id = package_id;
     s_runtime.view = MainView::Detail;
     refresh_catalog_and_render();
@@ -581,7 +576,7 @@ void on_uninstall_clicked(lv_event_t* event)
 
     const packs::PackageRecord& package = s_runtime.packages[package_index];
     std::string error;
-    set_status_text("Uninstalling package...");
+    set_status_text(::ui::i18n::tr("Uninstalling package..."));
     if (!packs::uninstall_package(package, error))
     {
         set_status_text(error);
@@ -589,7 +584,7 @@ void on_uninstall_clicked(lv_event_t* event)
         return;
     }
 
-    ::ui::SystemNotification::show("Package uninstalled", 2000);
+    ::ui::SystemNotification::show(::ui::i18n::tr("Package uninstalled"), 2000);
     s_runtime.selected_package_id = package.id;
     s_runtime.view = MainView::Detail;
     refresh_catalog_and_render();
@@ -704,8 +699,9 @@ void render_list_view()
 
     if (s_runtime.filtered_indices.empty())
     {
-        set_status_text("No language packs available");
-        show_message_body("No language packs available");
+        const char* empty_text = ::ui::i18n::tr("No language packs available");
+        set_status_text(empty_text);
+        show_message_body(empty_text);
         sync_focus_group(s_runtime.filter_btn);
         return;
     }
@@ -798,7 +794,8 @@ void render_detail_view(std::size_t package_index)
     create_section_card(s_runtime.body_panel, "Contents", contents);
 
     std::string source = ::ui::i18n::format("Author: %s\nHomepage: %s",
-                                            package.author.empty() ? "Unknown" : package.author.c_str(),
+                                            package.author.empty() ? ::ui::i18n::tr("Unknown")
+                                                                   : package.author.c_str(),
                                             package.homepage.empty() ? "-" : package.homepage.c_str());
     create_section_card(s_runtime.body_panel, "Source", source);
 
@@ -953,7 +950,7 @@ void enter(const shell::Host* host, lv_obj_t* parent)
     apply_root_style(s_runtime.root);
 
     ::ui::widgets::top_bar_init(s_runtime.top_bar, s_runtime.root);
-    ::ui::widgets::top_bar_set_title(s_runtime.top_bar, "Extensions");
+    ::ui::widgets::top_bar_set_title(s_runtime.top_bar, ::ui::i18n::tr("Extensions"));
     ::ui::widgets::top_bar_set_back_callback(s_runtime.top_bar, on_back, nullptr);
 
     two_pane_layout::ContentSpec content_spec{};

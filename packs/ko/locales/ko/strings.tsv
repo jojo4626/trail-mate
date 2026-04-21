@@ -25,6 +25,39 @@ English keyboard	영어 키보드
 Error	오류
 Factory Reset	공장 초기화
 GPS	GPS
+Extensions	확장 기능
+Language	언어
+Package Details	패키지 세부 정보
+Back to list	목록으로 돌아가기
+Install	설치
+Update	업데이트
+Uninstall	제거
+Incompatible	호환되지 않음
+Compatible with this device	이 기기와 호환됨
+Compatibility: %s	호환성: %s
+memory profile mismatch	메모리 프로필 불일치
+needs %s	%s 필요
+Update available: %s	업데이트 가능: %s
+Installed	설치됨
+Installed: %s	설치됨: %s
+Available to install	설치 가능
+Blocked	차단됨
+%lu locales  %lu fonts  %lu IME  %s	로캘 %lu개  글꼴 %lu개  입력기 %lu개  %s
+No Wi-Fi	Wi-Fi 없음
+Installing package...	패키지 설치 중...
+Package installed	패키지가 설치되었습니다
+Uninstalling package...	패키지 제거 중...
+Package uninstalled	패키지가 제거되었습니다
+No language packs available	사용 가능한 언어 팩이 없습니다
+Available language packs: %lu	사용 가능한 언어 팩: %lu
+About	정보
+Package Info	패키지 정보
+Contents	구성
+Source	출처
+Archive: %s\nExtra font RAM: %s\nProfiles: %s\n%s	아카이브: %s\n추가 글꼴 RAM: %s\n프로필: %s\n%s
+Locales: %s\nFonts: %s\nIME: %s	로캘: %s\n글꼴: %s\n입력기: %s
+Author: %s\nHomepage: %s	작성자: %s\n홈페이지: %s
+None	없음
 GPS Status	GPS 상태
 Hide	숨기기
 Info	정보

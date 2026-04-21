@@ -25,6 +25,39 @@ English keyboard	Clavier anglais
 Error	Erreur
 Factory Reset	Réinit. usine
 GPS	GPS
+Extensions	Extensions
+Language	Langue
+Package Details	Détails du paquet
+Back to list	Retour à la liste
+Install	Installer
+Update	Mettre à jour
+Uninstall	Désinstaller
+Incompatible	Incompatible
+Compatible with this device	Compatible avec cet appareil
+Compatibility: %s	Compatibilité : %s
+memory profile mismatch	profil mémoire incompatible
+needs %s	nécessite %s
+Update available: %s	Mise à jour disponible : %s
+Installed	Installé
+Installed: %s	Installé : %s
+Available to install	Disponible à l'installation
+Blocked	Bloqué
+%lu locales  %lu fonts  %lu IME  %s	%lu langues  %lu polices  %lu IME  %s
+No Wi-Fi	Pas de Wi-Fi
+Installing package...	Installation du paquet...
+Package installed	Paquet installé
+Uninstalling package...	Désinstallation du paquet...
+Package uninstalled	Paquet désinstallé
+No language packs available	Aucun paquet de langue disponible
+Available language packs: %lu	Paquets de langue disponibles : %lu
+About	À propos
+Package Info	Infos du paquet
+Contents	Contenu
+Source	Source
+Archive: %s\nExtra font RAM: %s\nProfiles: %s\n%s	Archive : %s\nRAM police supplémentaire : %s\nProfils : %s\n%s
+Locales: %s\nFonts: %s\nIME: %s	Langues : %s\nPolices : %s\nIME : %s
+Author: %s\nHomepage: %s	Auteur : %s\nPage d'accueil : %s
+None	Aucun
 GPS Status	État GPS
 Hide	Masquer
 Info	Infos

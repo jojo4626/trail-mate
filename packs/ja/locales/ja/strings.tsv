@@ -25,6 +25,39 @@ English keyboard	英語キーボード
 Error	エラー
 Factory Reset	工場出荷時設定
 GPS	GPS
+Extensions	拡張機能
+Language	言語
+Package Details	パッケージ詳細
+Back to list	一覧に戻る
+Install	インストール
+Update	更新
+Uninstall	アンインストール
+Incompatible	非互換
+Compatible with this device	このデバイスに対応
+Compatibility: %s	互換性: %s
+memory profile mismatch	メモリプロファイル不一致
+needs %s	%s が必要
+Update available: %s	更新あり: %s
+Installed	インストール済み
+Installed: %s	インストール済み: %s
+Available to install	インストール可能
+Blocked	ブロック
+%lu locales  %lu fonts  %lu IME  %s	%lu ロケール  %lu フォント  %lu IME  %s
+No Wi-Fi	Wi-Fi なし
+Installing package...	パッケージをインストール中...
+Package installed	パッケージをインストールしました
+Uninstalling package...	パッケージをアンインストール中...
+Package uninstalled	パッケージをアンインストールしました
+No language packs available	利用可能な言語パックはありません
+Available language packs: %lu	利用可能な言語パック: %lu
+About	概要
+Package Info	パッケージ情報
+Contents	内容
+Source	提供元
+Archive: %s\nExtra font RAM: %s\nProfiles: %s\n%s	アーカイブ: %s\n追加フォント RAM: %s\nプロファイル: %s\n%s
+Locales: %s\nFonts: %s\nIME: %s	ロケール: %s\nフォント: %s\nIME: %s
+Author: %s\nHomepage: %s	作者: %s\nホームページ: %s
+None	なし
 GPS Status	GPS状態
 Hide	隠す
 Info	情報

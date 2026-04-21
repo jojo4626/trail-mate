@@ -25,6 +25,39 @@ English keyboard	Klawiatura angielska
 Error	Błąd
 Factory Reset	Reset fabryczny
 GPS	GPS
+Extensions	Rozszerzenia
+Language	Język
+Package Details	Szczegóły pakietu
+Back to list	Wróć do listy
+Install	Zainstaluj
+Update	Aktualizuj
+Uninstall	Odinstaluj
+Incompatible	Niezgodne
+Compatible with this device	Zgodne z tym urządzeniem
+Compatibility: %s	Zgodność: %s
+memory profile mismatch	niezgodny profil pamięci
+needs %s	wymaga %s
+Update available: %s	Dostępna aktualizacja: %s
+Installed	Zainstalowano
+Installed: %s	Zainstalowano: %s
+Available to install	Dostępne do instalacji
+Blocked	Zablokowane
+%lu locales  %lu fonts  %lu IME  %s	%lu języków  %lu czcionek  %lu IME  %s
+No Wi-Fi	Brak Wi-Fi
+Installing package...	Instalowanie pakietu...
+Package installed	Pakiet zainstalowany
+Uninstalling package...	Odinstalowywanie pakietu...
+Package uninstalled	Pakiet odinstalowany
+No language packs available	Brak dostępnych pakietów językowych
+Available language packs: %lu	Dostępne pakiety językowe: %lu
+About	Informacje
+Package Info	Informacje o pakiecie
+Contents	Zawartość
+Source	Źródło
+Archive: %s\nExtra font RAM: %s\nProfiles: %s\n%s	Archiwum: %s\nDodatkowy RAM czcionek: %s\nProfile: %s\n%s
+Locales: %s\nFonts: %s\nIME: %s	Języki: %s\nCzcionki: %s\nIME: %s
+Author: %s\nHomepage: %s	Autor: %s\nStrona główna: %s
+None	Brak
 GPS Status	Stan GPS
 Hide	Ukryj
 Info	Info

@@ -25,6 +25,39 @@ English keyboard	英文鍵盤
 Error	錯誤
 Factory Reset	恢復原廠
 GPS	GPS
+Extensions	擴充
+Language	語言
+Package Details	套件詳情
+Back to list	返回清單
+Install	安裝
+Update	更新
+Uninstall	解除安裝
+Incompatible	不相容
+Compatible with this device	與此裝置相容
+Compatibility: %s	相容性：%s
+memory profile mismatch	記憶體設定檔不相符
+needs %s	需要 %s
+Update available: %s	有可用更新：%s
+Installed	已安裝
+Installed: %s	已安裝：%s
+Available to install	可安裝
+Blocked	已封鎖
+%lu locales  %lu fonts  %lu IME  %s	%lu 個語言  %lu 個字型  %lu 個輸入法  %s
+No Wi-Fi	無 Wi-Fi
+Installing package...	正在安裝套件...
+Package installed	套件已安裝
+Uninstalling package...	正在解除安裝套件...
+Package uninstalled	套件已解除安裝
+No language packs available	沒有可用語言包
+Available language packs: %lu	可用語言包：%lu
+About	關於
+Package Info	套件資訊
+Contents	內容
+Source	來源
+Archive: %s\nExtra font RAM: %s\nProfiles: %s\n%s	封存檔：%s\n額外字型 RAM：%s\n設定檔：%s\n%s
+Locales: %s\nFonts: %s\nIME: %s	語言：%s\n字型：%s\n輸入法：%s
+Author: %s\nHomepage: %s	作者：%s\n首頁：%s
+None	無
 GPS Status	GPS 狀態
 Hide	隱藏
 Info	資訊

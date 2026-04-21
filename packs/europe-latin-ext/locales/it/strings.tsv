@@ -25,6 +25,39 @@ English keyboard	Tastiera inglese
 Error	Errore
 Factory Reset	Riprist. fabbrica
 GPS	GPS
+Extensions	Estensioni
+Language	Lingua
+Package Details	Dettagli pacchetto
+Back to list	Torna all'elenco
+Install	Installa
+Update	Aggiorna
+Uninstall	Disinstalla
+Incompatible	Incompatibile
+Compatible with this device	Compatibile con questo dispositivo
+Compatibility: %s	Compatibilità: %s
+memory profile mismatch	profilo memoria incompatibile
+needs %s	richiede %s
+Update available: %s	Aggiornamento disponibile: %s
+Installed	Installato
+Installed: %s	Installato: %s
+Available to install	Disponibile per l'installazione
+Blocked	Bloccato
+%lu locales  %lu fonts  %lu IME  %s	%lu lingue  %lu font  %lu IME  %s
+No Wi-Fi	Nessun Wi-Fi
+Installing package...	Installazione pacchetto...
+Package installed	Pacchetto installato
+Uninstalling package...	Disinstallazione pacchetto...
+Package uninstalled	Pacchetto disinstallato
+No language packs available	Nessun pacchetto lingua disponibile
+Available language packs: %lu	Pacchetti lingua disponibili: %lu
+About	Informazioni
+Package Info	Info pacchetto
+Contents	Contenuto
+Source	Origine
+Archive: %s\nExtra font RAM: %s\nProfiles: %s\n%s	Archivio: %s\nRAM font extra: %s\nProfili: %s\n%s
+Locales: %s\nFonts: %s\nIME: %s	Lingue: %s\nFont: %s\nIME: %s
+Author: %s\nHomepage: %s	Autore: %s\nHomepage: %s
+None	Nessuno
 GPS Status	Stato GPS
 Hide	Nascondi
 Info	Info
