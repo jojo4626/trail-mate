@@ -1,6 +1,6 @@
 /**
  * @file contact_store.h
- * @brief Contact nickname storage shell backed by SD/Flash persistence
+ * @brief Contact nickname storage shell backed by a single selected persistence backend
  */
 
 #pragma once
@@ -28,7 +28,13 @@ class ContactStore : public IContactStore,
     size_t getCount() const override;
 
   private:
-    static constexpr const char* kSdPath = "/sd/contacts.dat";
+    enum class StorageBackend : uint8_t
+    {
+        Sd,
+        Flash,
+    };
+
+    static constexpr const char* kSdPath = "/contacts.dat";
     static constexpr const char* kPrefNs = "contacts";
     static constexpr const char* kPrefKey = "contact_blob";
 
@@ -39,9 +45,9 @@ class ContactStore : public IContactStore,
     bool saveToSD(const uint8_t* data, size_t len) const;
     bool loadFromFlash(std::vector<uint8_t>& out) const;
     bool saveToFlash(const uint8_t* data, size_t len) const;
-    void clearFlashBackup() const;
 
     ContactStoreCore core_;
+    StorageBackend backend_ = StorageBackend::Flash;
 };
 
 } // namespace contacts

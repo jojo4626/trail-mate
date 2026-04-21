@@ -42,6 +42,8 @@ class NodeStoreCore : public INodeStore
     bool flush() override;
 
     static uint32_t computeBlobCrc(const uint8_t* data, size_t len);
+    static bool decodeBlob(std::vector<NodeEntry>& out, const uint8_t* data, size_t len, uint8_t persist_version = kPersistVersion);
+    static void encodeBlob(std::vector<uint8_t>& out, const std::vector<NodeEntry>& entries);
 
   private:
     bool loadEntries();

@@ -36,6 +36,7 @@ struct NodeStoreSdHeader
 bool isValidNodeBlobSize(size_t len);
 size_t nodeBlobEntryCount(size_t len);
 size_t nodeBlobByteSize(size_t count);
+size_t nodeBlobEntrySizeForVersion(uint8_t version);
 NodeStoreSdHeader makeNodeStoreSdHeader(const uint8_t* data, size_t len);
 NodeBlobValidation validateNodeBlobMetadata(size_t len, uint8_t version,
                                             bool has_crc, uint32_t stored_crc,

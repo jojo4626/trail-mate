@@ -1,6 +1,6 @@
 /**
  * @file node_store.h
- * @brief Lightweight persisted NodeInfo store shell (SD-first, Preferences fallback)
+ * @brief Persisted NodeInfo store shell backed by a single selected persistence backend
  */
 
 #pragma once
@@ -33,6 +33,12 @@ class NodeStore : public contacts::INodeStore,
     bool flush() override;
 
   private:
+    enum class StorageBackend : uint8_t
+    {
+        Sd,
+        Nvs,
+    };
+
     static constexpr const char* kPersistNodesFile = "/nodes.bin";
     static constexpr const char* kPersistNodesNs = "nodes";
     static constexpr const char* kPersistNodesKey = "node_blob";
@@ -50,6 +56,7 @@ class NodeStore : public contacts::INodeStore,
     void clearNvs() const;
 
     contacts::NodeStoreCore core_;
+    StorageBackend backend_ = StorageBackend::Nvs;
 };
 
 } // namespace meshtastic

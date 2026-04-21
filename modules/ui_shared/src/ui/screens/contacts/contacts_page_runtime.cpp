@@ -144,6 +144,10 @@ void enter(const shell::Host* host, lv_obj_t* parent)
 
     init_contacts_input();
     refresh_contacts_data();
+    std::printf("[Contacts] open contacts=%u nearby=%u ignored=%u\n",
+                static_cast<unsigned>(g_contacts_state.contacts_list.size()),
+                static_cast<unsigned>(g_contacts_state.nearby_list.size()),
+                static_cast<unsigned>(g_contacts_state.ignored_list.size()));
     refresh_ui();
 
     g_contacts_state.initialized = true;

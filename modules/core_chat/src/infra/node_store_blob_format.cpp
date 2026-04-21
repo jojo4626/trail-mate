@@ -12,24 +12,31 @@ namespace chat
 namespace contacts
 {
 
+size_t nodeBlobEntrySizeForVersion(uint8_t version)
+{
+    if (version == NodeStoreCore::kPersistVersion)
+    {
+        return NodeStoreCore::kSerializedEntrySizeV8;
+    }
+    if (version == (NodeStoreCore::kPersistVersion - 1))
+    {
+        return NodeStoreCore::kSerializedEntrySize;
+    }
+    if (version == (NodeStoreCore::kPersistVersion - 2))
+    {
+        return NodeStoreCore::kLegacySerializedEntrySize;
+    }
+    return 0;
+}
+
 bool isValidNodeBlobSize(size_t len)
 {
-    return (len % NodeStoreCore::kSerializedEntrySizeV8) == 0 ||
-           (len % NodeStoreCore::kSerializedEntrySize) == 0 ||
-           (len % NodeStoreCore::kLegacySerializedEntrySize) == 0;
+    return len != 0 && (len % NodeStoreCore::kSerializedEntrySizeV8) == 0;
 }
 
 size_t nodeBlobEntryCount(size_t len)
 {
-    if ((len % NodeStoreCore::kSerializedEntrySizeV8) == 0)
-    {
-        return len / NodeStoreCore::kSerializedEntrySizeV8;
-    }
-    if ((len % NodeStoreCore::kSerializedEntrySize) == 0)
-    {
-        return len / NodeStoreCore::kSerializedEntrySize;
-    }
-    return len / NodeStoreCore::kLegacySerializedEntrySize;
+    return isValidNodeBlobSize(len) ? (len / NodeStoreCore::kSerializedEntrySizeV8) : 0;
 }
 
 size_t nodeBlobByteSize(size_t count)
@@ -57,31 +64,26 @@ NodeBlobValidation validateNodeBlobMetadata(size_t len, uint8_t version,
     {
         return has_crc ? NodeBlobValidation::StaleMetadata : NodeBlobValidation::Empty;
     }
-    if (!isValidNodeBlobSize(len))
+    if (version == 0)
     {
-        return NodeBlobValidation::InvalidLength;
+        return NodeBlobValidation::VersionMismatch;
     }
-    const size_t entry_size = (version == NodeStoreCore::kPersistVersion)
-                                  ? NodeStoreCore::kSerializedEntrySizeV8
-                                  : ((version == (NodeStoreCore::kPersistVersion - 1))
-                                         ? NodeStoreCore::kSerializedEntrySize
-                                         : NodeStoreCore::kLegacySerializedEntrySize);
+    const size_t entry_size = nodeBlobEntrySizeForVersion(version);
+    if (entry_size == 0)
+    {
+        return NodeBlobValidation::VersionMismatch;
+    }
     if ((len % entry_size) != 0)
     {
         return NodeBlobValidation::InvalidLength;
     }
-    if (nodeBlobEntryCount(len) > NodeStoreCore::kMaxNodes)
+    if ((len / entry_size) > NodeStoreCore::kMaxNodes)
     {
         return NodeBlobValidation::TooManyEntries;
     }
     if (!has_crc)
     {
         return NodeBlobValidation::MissingCrc;
-    }
-    if (version != NodeStoreCore::kPersistVersion &&
-        version != (NodeStoreCore::kPersistVersion - 1))
-    {
-        return NodeBlobValidation::VersionMismatch;
     }
     if (!data)
     {
@@ -93,8 +95,7 @@ NodeBlobValidation validateNodeBlobMetadata(size_t len, uint8_t version,
 
 NodeBlobValidation validateNodeStoreSdHeader(const NodeStoreSdHeader& header)
 {
-    if (header.ver != NodeStoreCore::kPersistVersion &&
-        header.ver != (NodeStoreCore::kPersistVersion - 1))
+    if (nodeBlobEntrySizeForVersion(header.ver) == 0)
     {
         return NodeBlobValidation::VersionMismatch;
     }
@@ -113,13 +114,13 @@ NodeBlobValidation validateNodeStoreSdBlob(const NodeStoreSdHeader& header,
     {
         return header_status;
     }
-    const size_t entry_size = (header.ver == NodeStoreCore::kPersistVersion)
-                                  ? NodeStoreCore::kSerializedEntrySizeV8
-                                  : ((header.ver == (NodeStoreCore::kPersistVersion - 1))
-                                         ? NodeStoreCore::kSerializedEntrySize
-                                         : NodeStoreCore::kLegacySerializedEntrySize);
+    const size_t entry_size = nodeBlobEntrySizeForVersion(header.ver);
+    if (entry_size == 0)
+    {
+        return NodeBlobValidation::VersionMismatch;
+    }
     const size_t expected_bytes = header.count * entry_size;
-    if (expected_bytes != len || !isValidNodeBlobSize(len))
+    if (expected_bytes != len)
     {
         return NodeBlobValidation::InvalidLength;
     }

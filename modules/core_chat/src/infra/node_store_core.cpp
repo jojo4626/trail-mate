@@ -1,6 +1,7 @@
 #include "chat/infra/node_store_core.h"
 
 #include "chat/domain/contact_types.h"
+#include "chat/infra/node_store_blob_format.h"
 #include "sys/clock.h"
 #include <cmath>
 #include <cstring>
@@ -579,6 +580,93 @@ uint32_t NodeStoreCore::computeBlobCrc(const uint8_t* data, size_t len)
     return ~crc;
 }
 
+bool NodeStoreCore::decodeBlob(std::vector<NodeEntry>& out, const uint8_t* data, size_t len, uint8_t persist_version)
+{
+    if (!data)
+    {
+        out.clear();
+        return len == 0;
+    }
+
+    if (len == 0)
+    {
+        out.clear();
+        return true;
+    }
+
+    const size_t entry_size = nodeBlobEntrySizeForVersion(persist_version);
+    if (entry_size == 0 || (len % entry_size) != 0)
+    {
+        out.clear();
+        return false;
+    }
+
+    size_t count = len / entry_size;
+    if (count > kMaxNodes)
+    {
+        count = kMaxNodes;
+    }
+
+    out.clear();
+    out.reserve(count);
+    if (persist_version == kPersistVersion)
+    {
+        auto* persisted = reinterpret_cast<const PersistedNodeEntryV8*>(data);
+        for (size_t index = 0; index < count; ++index)
+        {
+            NodeEntry entry{};
+            copyFromPersisted(entry, persisted[index]);
+            out.push_back(entry);
+        }
+        return true;
+    }
+
+    if (persist_version == (kPersistVersion - 1))
+    {
+        auto* persisted = reinterpret_cast<const PersistedNodeEntryV7*>(data);
+        for (size_t index = 0; index < count; ++index)
+        {
+            NodeEntry entry{};
+            copyFromPersisted(entry, persisted[index]);
+            out.push_back(entry);
+        }
+        return true;
+    }
+
+    if (persist_version == (kPersistVersion - 2))
+    {
+        auto* persisted = reinterpret_cast<const PersistedNodeEntryV6*>(data);
+        for (size_t index = 0; index < count; ++index)
+        {
+            NodeEntry entry{};
+            copyFromPersisted(entry, persisted[index]);
+            out.push_back(entry);
+        }
+        return true;
+    }
+
+    out.clear();
+    return false;
+}
+
+void NodeStoreCore::encodeBlob(std::vector<uint8_t>& out, const std::vector<NodeEntry>& entries)
+{
+    out.clear();
+    if (entries.empty())
+    {
+        return;
+    }
+
+    std::vector<PersistedNodeEntryV8> persisted(entries.size());
+    for (size_t index = 0; index < entries.size(); ++index)
+    {
+        copyIntoPersisted(persisted[index], entries[index]);
+    }
+
+    out.resize(persisted.size() * sizeof(PersistedNodeEntryV8));
+    memcpy(out.data(), persisted.data(), out.size());
+}
+
 bool NodeStoreCore::loadEntries()
 {
     std::vector<uint8_t> blob;
@@ -610,84 +698,12 @@ bool NodeStoreCore::saveEntries()
 
 bool NodeStoreCore::decodeEntries(const uint8_t* data, size_t len)
 {
-    if (!data)
-    {
-        return len == 0;
-    }
-
-    if (len == 0)
-    {
-        entries_.clear();
-        return true;
-    }
-
-    const bool is_v8_blob = (len % sizeof(PersistedNodeEntryV8)) == 0;
-    const bool is_v7_blob = (len % kSerializedEntrySize) == 0;
-    const bool is_v6_blob = (len % kLegacySerializedEntrySize) == 0;
-    if (!is_v8_blob && !is_v7_blob && !is_v6_blob)
-    {
-        return false;
-    }
-
-    const size_t entry_size = is_v8_blob ? sizeof(PersistedNodeEntryV8)
-                                         : (is_v7_blob ? kSerializedEntrySize : kLegacySerializedEntrySize);
-    size_t count = len / entry_size;
-    if (count > kMaxNodes)
-    {
-        count = kMaxNodes;
-    }
-
-    entries_.clear();
-    entries_.reserve(count);
-    if (is_v8_blob)
-    {
-        auto* persisted = reinterpret_cast<const PersistedNodeEntryV8*>(data);
-        for (size_t index = 0; index < count; ++index)
-        {
-            NodeEntry entry{};
-            copyFromPersisted(entry, persisted[index]);
-            entries_.push_back(entry);
-        }
-    }
-    else if (is_v7_blob)
-    {
-        auto* persisted = reinterpret_cast<const PersistedNodeEntryV7*>(data);
-        for (size_t index = 0; index < count; ++index)
-        {
-            NodeEntry entry{};
-            copyFromPersisted(entry, persisted[index]);
-            entries_.push_back(entry);
-        }
-    }
-    else
-    {
-        auto* persisted = reinterpret_cast<const PersistedNodeEntryV6*>(data);
-        for (size_t index = 0; index < count; ++index)
-        {
-            NodeEntry entry{};
-            copyFromPersisted(entry, persisted[index]);
-            entries_.push_back(entry);
-        }
-    }
-    return true;
+    return decodeBlob(entries_, data, len, kPersistVersion);
 }
 
 void NodeStoreCore::encodeEntries(std::vector<uint8_t>& out) const
 {
-    out.clear();
-    if (entries_.empty())
-    {
-        return;
-    }
-
-    std::vector<PersistedNodeEntryV8> persisted(entries_.size());
-    for (size_t index = 0; index < entries_.size(); ++index)
-    {
-        copyIntoPersisted(persisted[index], entries_[index]);
-    }
-
-    out.resize(persisted.size() * sizeof(PersistedNodeEntryV8));
-    memcpy(out.data(), persisted.data(), out.size());
+    encodeBlob(out, entries_);
 }
 
 void NodeStoreCore::maybeSave()

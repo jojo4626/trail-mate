@@ -1,6 +1,6 @@
 /**
  * @file node_store.cpp
- * @brief Lightweight persisted NodeInfo store shell (SD-first, Preferences fallback)
+ * @brief Persisted NodeInfo store shell backed by a single selected persistence backend
  */
 
 #include "platform/esp/arduino_common/chat/infra/meshtastic/node_store.h"
@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <esp_err.h>
 #include <nvs.h>
+#include <string>
 
 namespace chat
 {
@@ -18,7 +19,7 @@ namespace meshtastic
 {
 
 #ifndef NODE_STORE_LOG_ENABLE
-#define NODE_STORE_LOG_ENABLE 0
+#define NODE_STORE_LOG_ENABLE 1
 #endif
 
 #if NODE_STORE_LOG_ENABLE
@@ -66,6 +67,19 @@ void logNvsStats(const char* tag, const char* ns)
     }
 }
 
+bool canonicalizeNodePayload(const uint8_t* data, size_t len, uint8_t version, std::vector<uint8_t>& out)
+{
+    std::vector<contacts::NodeEntry> entries;
+    if (!contacts::NodeStoreCore::decodeBlob(entries, data, len, version))
+    {
+        out.clear();
+        return false;
+    }
+
+    contacts::NodeStoreCore::encodeBlob(out, entries);
+    return true;
+}
+
 } // namespace
 
 NodeStore::NodeStore()
@@ -75,6 +89,9 @@ NodeStore::NodeStore()
 
 void NodeStore::begin()
 {
+    backend_ = (SD.cardType() != CARD_NONE) ? StorageBackend::Sd : StorageBackend::Nvs;
+    NODE_STORE_LOG("[NodeStore] backend=%s\n",
+                   backend_ == StorageBackend::Sd ? "sd" : "nvs");
     core_.begin();
 }
 
@@ -137,40 +154,48 @@ bool NodeStore::loadBlob(std::vector<uint8_t>& out)
 {
     out.clear();
 
-    const bool sd_available = (SD.cardType() != CARD_NONE);
-    if (sd_available && loadFromSd(out))
+    if (backend_ == StorageBackend::Sd)
     {
-        return true;
-    }
-
-    if (loadFromNvs(out))
-    {
-        if (sd_available)
+        if (loadFromSd(out))
         {
-            saveToSd(out.data(), out.size());
+            NODE_STORE_LOG("[NodeStore] load source=sd path=%s len=%u\n",
+                           kPersistNodesFile,
+                           static_cast<unsigned>(out.size()));
+            return true;
         }
-        return true;
+    }
+    else
+    {
+        if (loadFromNvs(out))
+        {
+            NODE_STORE_LOG("[NodeStore] load source=nvs ns=%s len=%u\n",
+                           kPersistNodesNs,
+                           static_cast<unsigned>(out.size()));
+            return true;
+        }
     }
 
+    NODE_STORE_LOG("[NodeStore] load source=none\n");
     return false;
 }
 
 bool NodeStore::saveBlob(const uint8_t* data, size_t len)
 {
-    const bool sd_available = (SD.cardType() != CARD_NONE);
-    if (sd_available && saveToSd(data, len))
+    if (backend_ == StorageBackend::Sd)
     {
-        NODE_STORE_LOG("[NodeStore] save ok (SD) count=%u\n",
-                       static_cast<unsigned>(contacts::nodeBlobEntryCount(len)));
-        return true;
+        const bool ok = saveToSd(data, len);
+        NODE_STORE_LOG("[NodeStore] save target=sd len=%u count=%u ok=%u\n",
+                       static_cast<unsigned>(len),
+                       static_cast<unsigned>(contacts::nodeBlobEntryCount(len)),
+                       ok ? 1U : 0U);
+        return ok;
     }
 
     const bool ok = saveToNvs(data, len);
-    if (ok)
-    {
-        NODE_STORE_LOG("[NodeStore] saved=%u\n",
-                       static_cast<unsigned>(contacts::nodeBlobEntryCount(len)));
-    }
+    NODE_STORE_LOG("[NodeStore] save target=nvs len=%u count=%u ok=%u\n",
+                   static_cast<unsigned>(len),
+                   static_cast<unsigned>(contacts::nodeBlobEntryCount(len)),
+                   ok ? 1U : 0U);
     return ok;
 }
 
@@ -195,7 +220,7 @@ bool NodeStore::loadFromNvs(std::vector<uint8_t>& out)
                                                              out,
                                                              &meta))
     {
-        NODE_STORE_LOG("[NodeStore] begin failed ns=%s\n", kPersistNodesNs);
+        NODE_STORE_LOG("[NodeStore] NVS blob missing/unreadable ns=%s\n", kPersistNodesNs);
         logNvsStats("begin", kPersistNodesNs);
         return false;
     }
@@ -210,55 +235,66 @@ bool NodeStore::loadFromNvs(std::vector<uint8_t>& out)
     {
         if (meta.has_crc || meta.has_version)
         {
-            NODE_STORE_LOG("[NodeStore] stale meta detected, clearing ver/crc\n");
-            chat::infra::clearPreferencesKeys(kPersistNodesNs,
-                                              kPersistNodesKeyVer,
-                                              kPersistNodesKeyCrc);
-        }
-        return true;
-    }
-
-    if (!contacts::isValidNodeBlobSize(meta.len) ||
-        contacts::nodeBlobEntryCount(meta.len) > contacts::NodeStoreCore::kMaxNodes)
-    {
-        NODE_STORE_LOG("[NodeStore] invalid blob size=%u\n", static_cast<unsigned>(meta.len));
-        out.clear();
-        clearBlob();
-        return false;
-    }
-
-    const contacts::NodeBlobValidation validation =
-        contacts::validateNodeBlobMetadata(meta.len,
-                                           meta.has_version ? meta.version : 0,
-                                           meta.has_crc,
-                                           meta.crc,
-                                           out.data());
-    if (validation != contacts::NodeBlobValidation::Ok)
-    {
-        if (validation == contacts::NodeBlobValidation::MissingCrc)
-        {
-            NODE_STORE_LOG("[NodeStore] missing crc\n");
-        }
-        else if (validation == contacts::NodeBlobValidation::VersionMismatch)
-        {
-            NODE_STORE_LOG("[NodeStore] version mismatch stored=%u expected=%u\n",
+            NODE_STORE_LOG("[NodeStore] stale meta detected ver=%u has_crc=%u\n",
                            static_cast<unsigned>(meta.version),
-                           static_cast<unsigned>(contacts::NodeStoreCore::kPersistVersion));
+                           meta.has_crc ? 1U : 0U);
         }
-        else if (validation == contacts::NodeBlobValidation::CrcMismatch)
-        {
-            const uint32_t calc_crc = contacts::NodeStoreCore::computeBlobCrc(out.data(), out.size());
-            NODE_STORE_LOG("[NodeStore] crc mismatch stored=%08lX calc=%08lX\n",
-                           static_cast<unsigned long>(meta.crc),
-                           static_cast<unsigned long>(calc_crc));
-        }
-        out.clear();
-        clearBlob();
+        NODE_STORE_LOG("[NodeStore] NVS backup empty\n");
         return false;
     }
 
+    if (!meta.has_version)
+    {
+        NODE_STORE_LOG("[NodeStore] missing version len=%u\n",
+                       static_cast<unsigned>(meta.len),
+                       static_cast<unsigned>(meta.len));
+        out.clear();
+        return false;
+    }
+
+    const size_t entry_size = contacts::nodeBlobEntrySizeForVersion(meta.version);
+    if (entry_size == 0 ||
+        meta.len == 0 ||
+        (meta.len % entry_size) != 0 ||
+        (meta.len / entry_size) > contacts::NodeStoreCore::kMaxNodes)
+    {
+        NODE_STORE_LOG("[NodeStore] invalid blob shape len=%u ver=%u\n",
+                       static_cast<unsigned>(meta.len),
+                       static_cast<unsigned>(meta.version));
+        out.clear();
+        return false;
+    }
+
+    if (!meta.has_crc)
+    {
+        NODE_STORE_LOG("[NodeStore] missing crc\n");
+        out.clear();
+        return false;
+    }
+
+    const uint32_t calc_crc = contacts::NodeStoreCore::computeBlobCrc(out.data(), out.size());
+    if (calc_crc != meta.crc)
+    {
+        NODE_STORE_LOG("[NodeStore] crc mismatch stored=%08lX calc=%08lX\n",
+                       static_cast<unsigned long>(meta.crc),
+                       static_cast<unsigned long>(calc_crc));
+        out.clear();
+        return false;
+    }
+
+    std::vector<uint8_t> normalized;
+    if (!canonicalizeNodePayload(out.data(), out.size(), meta.version, normalized))
+    {
+        NODE_STORE_LOG("[NodeStore] decode failed ver=%u len=%u\n",
+                       static_cast<unsigned>(meta.version),
+                       static_cast<unsigned>(out.size()));
+        out.clear();
+        return false;
+    }
+
+    out.swap(normalized);
     NODE_STORE_LOG("[NodeStore] loaded=%u\n",
-                   static_cast<unsigned>(contacts::nodeBlobEntryCount(out.size())));
+                   static_cast<unsigned>(out.size() / contacts::NodeStoreCore::kSerializedEntrySizeV8));
     return true;
 }
 
@@ -266,49 +302,118 @@ bool NodeStore::loadFromSd(std::vector<uint8_t>& out) const
 {
     if (SD.cardType() == CARD_NONE)
     {
+        NODE_STORE_LOG("[NodeStore] load SD skipped: card none\n");
         return false;
     }
 
     File file = SD.open(kPersistNodesFile, FILE_READ);
     if (!file)
     {
+        NODE_STORE_LOG("[NodeStore] load SD open failed path=%s\n", kPersistNodesFile);
+        return false;
+    }
+
+    const size_t file_size = static_cast<size_t>(file.size());
+    if (file_size < sizeof(contacts::NodeStoreSdHeader))
+    {
+        NODE_STORE_LOG("[NodeStore] load SD short file path=%s size=%u\n",
+                       kPersistNodesFile,
+                       static_cast<unsigned>(file_size));
+        file.close();
         return false;
     }
 
     contacts::NodeStoreSdHeader header{};
     if (file.read(reinterpret_cast<uint8_t*>(&header), sizeof(header)) != sizeof(header))
     {
+        NODE_STORE_LOG("[NodeStore] load SD header read failed path=%s\n", kPersistNodesFile);
         file.close();
         return false;
     }
 
-    if (contacts::validateNodeStoreSdHeader(header) != contacts::NodeBlobValidation::Ok)
+    if (header.count == 0 || header.count > contacts::NodeStoreCore::kMaxNodes)
     {
+        NODE_STORE_LOG("[NodeStore] load SD header invalid path=%s ver=%u count=%u\n",
+                       kPersistNodesFile,
+                       static_cast<unsigned>(header.ver),
+                       static_cast<unsigned>(header.count));
         file.close();
         return false;
     }
 
-    const size_t entry_size = (header.ver == contacts::NodeStoreCore::kPersistVersion)
-                                  ? contacts::NodeStoreCore::kSerializedEntrySize
-                                  : contacts::NodeStoreCore::kLegacySerializedEntrySize;
-    const size_t expected_bytes = header.count * entry_size;
-    out.resize(expected_bytes);
-    const size_t read_bytes = expected_bytes > 0 ? file.read(out.data(), expected_bytes) : 0;
+    const size_t payload_len = file_size - sizeof(header);
+    if (payload_len == 0)
+    {
+        NODE_STORE_LOG("[NodeStore] load SD empty payload path=%s ver=%u count=%u\n",
+                       kPersistNodesFile,
+                       static_cast<unsigned>(header.ver),
+                       static_cast<unsigned>(header.count));
+        file.close();
+        return false;
+    }
+
+    out.resize(payload_len);
+    const size_t read_bytes = file.read(out.data(), payload_len);
     file.close();
 
-    if (read_bytes != expected_bytes)
+    if (read_bytes != payload_len)
     {
+        NODE_STORE_LOG("[NodeStore] load SD payload read mismatch path=%s want=%u got=%u\n",
+                       kPersistNodesFile,
+                       static_cast<unsigned>(payload_len),
+                       static_cast<unsigned>(read_bytes));
         out.clear();
         return false;
     }
 
-    if (contacts::validateNodeStoreSdBlob(header, out.data(), out.size()) != contacts::NodeBlobValidation::Ok)
+    const size_t entry_size = contacts::nodeBlobEntrySizeForVersion(header.ver);
+    if (entry_size == 0)
     {
+        NODE_STORE_LOG("[NodeStore] load SD unsupported version path=%s ver=%u\n",
+                       kPersistNodesFile,
+                       static_cast<unsigned>(header.ver));
         out.clear();
         return false;
     }
 
-    NODE_STORE_LOG("[NodeStore] loaded=%u (SD)\n", static_cast<unsigned>(header.count));
+    const size_t expected_len = static_cast<size_t>(header.count) * entry_size;
+    if (expected_len != out.size())
+    {
+        NODE_STORE_LOG("[NodeStore] load SD blob size mismatch path=%s len=%u ver=%u count=%u expected=%u\n",
+                       kPersistNodesFile,
+                       static_cast<unsigned>(out.size()),
+                       static_cast<unsigned>(header.ver),
+                       static_cast<unsigned>(header.count),
+                       static_cast<unsigned>(expected_len));
+        out.clear();
+        return false;
+    }
+
+    const uint32_t calc_crc = contacts::NodeStoreCore::computeBlobCrc(out.data(), out.size());
+    if (calc_crc != header.crc)
+    {
+        NODE_STORE_LOG("[NodeStore] load SD crc mismatch path=%s stored=%08lX calc=%08lX\n",
+                       kPersistNodesFile,
+                       static_cast<unsigned long>(header.crc),
+                       static_cast<unsigned long>(calc_crc));
+        out.clear();
+        return false;
+    }
+
+    std::vector<uint8_t> normalized;
+    if (!canonicalizeNodePayload(out.data(), out.size(), header.ver, normalized))
+    {
+        NODE_STORE_LOG("[NodeStore] load SD decode failed path=%s ver=%u len=%u\n",
+                       kPersistNodesFile,
+                       static_cast<unsigned>(header.ver),
+                       static_cast<unsigned>(out.size()));
+        out.clear();
+        return false;
+    }
+
+    out.swap(normalized);
+    NODE_STORE_LOG("[NodeStore] loaded=%u (SD)\n",
+                   static_cast<unsigned>(out.size() / contacts::NodeStoreCore::kSerializedEntrySizeV8));
     return true;
 }
 
@@ -317,6 +422,11 @@ bool NodeStore::saveToNvs(const uint8_t* data, size_t len) const
     chat::infra::PreferencesBlobMetadata meta;
     if (data && len > 0)
     {
+        if (!contacts::isValidNodeBlobSize(len) ||
+            contacts::nodeBlobEntryCount(len) > contacts::NodeStoreCore::kMaxNodes)
+        {
+            return false;
+        }
         meta.len = len;
         meta.has_version = true;
         meta.version = contacts::NodeStoreCore::kPersistVersion;
@@ -352,12 +462,13 @@ bool NodeStore::saveToSd(const uint8_t* data, size_t len) const
         return false;
     }
 
-    if (SD.exists(kPersistNodesFile))
+    const std::string temp_path = std::string(kPersistNodesFile) + ".tmp";
+    if (SD.exists(temp_path.c_str()))
     {
-        SD.remove(kPersistNodesFile);
+        SD.remove(temp_path.c_str());
     }
 
-    File file = SD.open(kPersistNodesFile, FILE_WRITE);
+    File file = SD.open(temp_path.c_str(), FILE_WRITE);
     if (!file)
     {
         return false;
@@ -372,7 +483,29 @@ bool NodeStore::saveToSd(const uint8_t* data, size_t len) const
     }
 
     file.close();
-    return ok;
+    if (!ok)
+    {
+        SD.remove(temp_path.c_str());
+        return false;
+    }
+
+    if (SD.exists(kPersistNodesFile))
+    {
+        SD.remove(kPersistNodesFile);
+    }
+
+    if (!SD.rename(temp_path.c_str(), kPersistNodesFile))
+    {
+        SD.remove(temp_path.c_str());
+        return false;
+    }
+
+    NODE_STORE_LOG("[NodeStore] save SD path=%s len=%u ver=%u count=%u\n",
+                   kPersistNodesFile,
+                   static_cast<unsigned>(len),
+                   static_cast<unsigned>(header.ver),
+                   static_cast<unsigned>(header.count));
+    return true;
 }
 
 void NodeStore::clearNvs() const
