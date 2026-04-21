@@ -35,7 +35,7 @@ class MeshtasticBleService : public BleService,
     MeshtasticBleService(app::IAppBleFacade& ctx, const std::string& device_name);
     ~MeshtasticBleService() override;
 
-    void start() override;
+    bool start() override;
     void stop() override;
     void update() override;
 

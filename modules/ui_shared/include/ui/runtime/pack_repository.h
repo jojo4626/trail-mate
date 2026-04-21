@@ -48,5 +48,6 @@ bool is_supported();
 bool load_installed_packages(std::vector<InstalledPackageRecord>& out_installed, std::string& out_error);
 bool fetch_catalog(std::vector<PackageRecord>& out_packages, std::string& out_error);
 bool install_package(const PackageRecord& package, std::string& out_error);
+bool uninstall_package(const PackageRecord& package, std::string& out_error);
 
 } // namespace ui::runtime::packs

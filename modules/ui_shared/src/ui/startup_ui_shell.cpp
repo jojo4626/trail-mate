@@ -1,5 +1,6 @@
 #include "ui/startup_ui_shell.h"
 
+#include "lvgl.h"
 #include "ui/app_runtime.h"
 #include "ui/localization.h"
 #include "ui/menu/menu_layout.h"
@@ -11,6 +12,12 @@ namespace
 {
 
 bool s_shell_initialized = false;
+
+void present_boot_overlay_now()
+{
+    lv_timer_handler();
+    lv_refr_now(nullptr);
+}
 
 bool lock_ui(const Hooks& hooks)
 {
@@ -29,9 +36,9 @@ void unlock_ui(const Hooks& hooks)
 
 bool prepareBootUi(const Hooks& hooks, bool waking_from_sleep)
 {
-    ::ui::i18n::reload_language();
     if (waking_from_sleep)
     {
+        ::ui::i18n::reload_language();
         return true;
     }
     if (!lock_ui(hooks))
@@ -39,7 +46,10 @@ bool prepareBootUi(const Hooks& hooks, bool waking_from_sleep)
         return false;
     }
     ui::boot::show();
+    ui::boot::set_log_line("Loading language packs...");
+    present_boot_overlay_now();
     unlock_ui(hooks);
+    ::ui::i18n::reload_language();
     return true;
 }
 

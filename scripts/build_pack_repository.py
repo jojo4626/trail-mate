@@ -88,14 +88,102 @@ def parse_bool(value: str | None, default: bool = False) -> bool:
     return default
 
 
+def resolve_build_path(spec: str, stage_font_dir: Path, stage_bundle_dir: Path, repo_root: Path) -> Path:
+    candidate = Path(spec)
+    if candidate.is_absolute():
+        return candidate
+
+    for base in (stage_font_dir, stage_bundle_dir, repo_root):
+        resolved = (base / candidate).resolve()
+        if resolved.exists():
+            return resolved
+
+    return (repo_root / candidate).resolve()
+
+
+def build_font_charset_if_configured(
+    stage_font_dir: Path,
+    stage_bundle_dir: Path,
+    repo_root: Path,
+) -> bool:
+    build_path = stage_font_dir / "build.ini"
+    if not build_path.exists():
+        return False
+
+    build = parse_key_value_file(build_path)
+    include_manifests = parse_bool(build.get("include_manifests"), default=True)
+    include_locales = parse_bool(build.get("include_locales"), default=True)
+    extra_chars = split_csv(build.get("extra_chars_file"))
+    seed_charsets = split_csv(build.get("seed_charset_file"))
+    exclude_charsets = split_csv(build.get("exclude_charset_file"))
+    ranked_chars_file = build.get("ranked_chars_file", "")
+    ranked_char_limit = parse_int(build.get("ranked_char_limit"), 0)
+
+    uses_generator = (
+        not include_manifests
+        or not include_locales
+        or bool(extra_chars)
+        or bool(seed_charsets)
+        or bool(exclude_charsets)
+        or bool(ranked_chars_file)
+    )
+    if not uses_generator:
+        return False
+
+    generator = repo_root / "tools" / "build_locale_pack_charset.py"
+    if not generator.exists():
+        raise FileNotFoundError(f"Missing charset builder script: {generator}")
+
+    command = [
+        sys.executable,
+        str(generator),
+        "--pack-root",
+        str(stage_bundle_dir.resolve()),
+        "--font-pack-id",
+        stage_font_dir.name,
+    ]
+    if not include_manifests:
+        command.append("--no-include-manifests")
+    if not include_locales:
+        command.append("--no-include-locales")
+    for spec in extra_chars:
+        command.extend([
+            "--extra-chars-file",
+            str(resolve_build_path(spec, stage_font_dir, stage_bundle_dir, repo_root)),
+        ])
+    for spec in seed_charsets:
+        command.extend([
+            "--seed-charset-file",
+            str(resolve_build_path(spec, stage_font_dir, stage_bundle_dir, repo_root)),
+        ])
+    for spec in exclude_charsets:
+        command.extend([
+            "--exclude-charset-file",
+            str(resolve_build_path(spec, stage_font_dir, stage_bundle_dir, repo_root)),
+        ])
+    if ranked_chars_file:
+        command.extend([
+            "--ranked-chars-file",
+            str(resolve_build_path(ranked_chars_file, stage_font_dir, stage_bundle_dir, repo_root)),
+        ])
+        if ranked_char_limit > 0:
+            command.extend(["--ranked-char-limit", str(ranked_char_limit)])
+
+    subprocess.run(command, check=True)
+    return True
+
+
 def build_font_if_missing(
     stage_font_dir: Path,
     repo_root: Path,
     node_exe: str,
     npm_exe: str | None,
+    force_rebuild: bool = False,
 ) -> None:
     build_path = stage_font_dir / "build.ini"
     font_bin_path = stage_font_dir / "font.bin"
+    if force_rebuild and font_bin_path.exists():
+        font_bin_path.unlink()
     if font_bin_path.exists():
         return
     if not build_path.exists():
@@ -159,7 +247,8 @@ def stage_bundle(
     fonts_root = stage_bundle_dir / "fonts"
     if fonts_root.is_dir():
         for font_dir in sorted(path for path in fonts_root.iterdir() if path.is_dir()):
-            build_font_if_missing(font_dir, repo_root, node_exe, npm_exe)
+            force_rebuild = build_font_charset_if_configured(font_dir, stage_bundle_dir, repo_root)
+            build_font_if_missing(font_dir, repo_root, node_exe, npm_exe, force_rebuild=force_rebuild)
 
     return stage_bundle_dir
 
@@ -248,6 +337,9 @@ def collect_locale_records(stage_bundle_dir: Path) -> list[dict[str, object]]:
                 "ui_font_pack_id": manifest.get("ui_font_pack", ""),
                 "content_font_pack_id": manifest.get(
                     "content_font_pack", manifest.get("ui_font_pack", "")
+                ),
+                "preferred_content_supplement_pack_ids": split_csv(
+                    manifest.get("preferred_content_supplement_packs", manifest.get("content_supplement_packs", ""))
                 ),
                 "ime_pack_id": manifest.get("ime_pack", ""),
             }

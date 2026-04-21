@@ -133,6 +133,19 @@ void refresh_active_screen()
     lv_refr_now(nullptr);
 }
 
+void refresh_screen_saver_locale_labels(int unread)
+{
+    if (s_screen_saver_unread_label != nullptr)
+    {
+        ::ui::i18n::set_label_text_fmt(s_screen_saver_unread_label, "Unread: %d", unread);
+    }
+
+    if (s_screen_saver_hint_label != nullptr)
+    {
+        ::ui::i18n::set_label_text(s_screen_saver_hint_label, "Press SPACE to resume");
+    }
+}
+
 void screen_saver_refresh()
 {
     if (!s_screen_saver_layer || !s_screen_saver_time_label || !s_screen_saver_unread_label)
@@ -148,15 +161,7 @@ void screen_saver_refresh()
     lv_label_set_text(s_screen_saver_time_label, time_buf);
 
     const int unread = readUnreadCount();
-    if (unread > 0)
-    {
-        const std::string text = ::ui::i18n::format("Unread: %d", unread);
-        lv_label_set_text(s_screen_saver_unread_label, text.c_str());
-    }
-    else
-    {
-        ::ui::i18n::set_label_text(s_screen_saver_unread_label, "Unread: 0");
-    }
+    refresh_screen_saver_locale_labels(unread);
 }
 
 void screen_saver_timer_cb(lv_timer_t* /*timer*/)
@@ -204,18 +209,14 @@ void init_screen_saver()
     s_screen_saver_unread_label = lv_label_create(s_screen_saver_layer);
     lv_obj_set_style_text_color(s_screen_saver_unread_label, lv_color_hex(0x6B4A1E), 0);
     lv_obj_set_style_text_font(s_screen_saver_unread_label, &lv_font_montserrat_20, 0);
-    ::ui::i18n::set_label_text(s_screen_saver_unread_label, "Unread: 0");
     lv_obj_align(s_screen_saver_unread_label, LV_ALIGN_CENTER, 0, 10);
 
     s_screen_saver_hint_label = lv_label_create(s_screen_saver_layer);
     lv_obj_set_style_text_color(s_screen_saver_hint_label, lv_color_hex(0x8A6A3A), 0);
     lv_obj_set_style_text_font(s_screen_saver_hint_label, &lv_font_montserrat_14, 0);
-#if defined(ARDUINO_T_DECK) || defined(ARDUINO_T_DECK_PRO)
-    ::ui::i18n::set_label_text(s_screen_saver_hint_label, "Press SPACE to resume");
-#else
-    ::ui::i18n::set_label_text(s_screen_saver_hint_label, "Press SPACE to resume");
-#endif
     lv_obj_align(s_screen_saver_hint_label, LV_ALIGN_CENTER, 0, 40);
+
+    refresh_screen_saver_locale_labels(0);
 
     lv_obj_add_flag(s_screen_saver_layer, LV_OBJ_FLAG_HIDDEN);
 }

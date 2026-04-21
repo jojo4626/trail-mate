@@ -23,7 +23,7 @@ The tool validates each glyph via encode/decode round-trip before writing.
 ## External Pack Workflow
 
 Simplified Chinese no longer ships as a compiled-in UI font. The repository now
-expects Chinese glyph coverage to be generated into an external font pack.
+expects Chinese glyph coverage to be generated into external font packs.
 
 The reference bundle lives under:
 
@@ -33,19 +33,32 @@ packs/zh-Hans
 
 Typical flow:
 
-1. Refresh the subset files:
+1. Refresh the ranked Pinyin glyph sources:
 
 ```bash
-python tools/build_locale_pack_charset.py --pack-root packs/zh-Hans --extra-chars-file tools/pinyin_chars.txt
+python tools/extract_pinyin_chars.py
 ```
 
-2. Generate `packs/zh-Hans/fonts/zh-hans-cjk/font.bin` with `lv_font_conv`
-   using:
+2. Generate the core pack subset:
+
+```bash
+python tools/build_locale_pack_charset.py --pack-root packs/zh-Hans --font-pack-id zh-hans-core
+```
+
+3. Generate the extension pack subset:
+
+```bash
+python tools/build_locale_pack_charset.py --pack-root packs/zh-Hans --font-pack-id zh-hans-ext
+```
+
+4. Generate `font.bin` files with `lv_font_conv` using:
 
 - font source: `tools/fonts/NotoSansCJKsc-Regular.otf`
-- glyph subset: `packs/zh-Hans/fonts/zh-hans-cjk/charset.txt` or `ranges.txt`
+- glyph subsets:
+  - `packs/zh-Hans/fonts/zh-hans-core/charset.txt`
+  - `packs/zh-Hans/fonts/zh-hans-ext/charset.txt`
 - output format: `bin`
 - size: `16`
 - bpp: `2`
 
-3. Copy the pack directories onto the SD card under `/trailmate/packs/...`.
+5. Copy the pack directories onto the SD card under `/trailmate/packs/...`.

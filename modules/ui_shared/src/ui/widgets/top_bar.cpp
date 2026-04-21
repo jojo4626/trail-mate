@@ -162,7 +162,7 @@ void top_bar_set_title(TopBar& bar, const char* title)
     }
 
     lv_label_set_text(bar.title_label, title);
-    ::ui::fonts::apply_localized_font(
+    ::ui::fonts::apply_content_font(
         bar.title_label, title, resolve_top_bar_font(lv_obj_get_height(bar.container)));
 }
 
@@ -180,7 +180,7 @@ void top_bar_set_right_text(TopBar& bar, const char* text)
     }
 
     lv_label_set_text(bar.right_label, text);
-    ::ui::fonts::apply_localized_font(
+    ::ui::fonts::apply_content_font(
         bar.right_label, text, resolve_top_bar_font(lv_obj_get_height(bar.container)));
 }
 

@@ -50,7 +50,6 @@ static lv_obj_t* create_btn_with_label(lv_obj_t* parent, int w, int h, const cha
     ::ui::i18n::set_label_text(label, text);
     lv_obj_set_width(label, LV_PCT(100));
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-    ::ui::fonts::apply_localized_font(label, lv_label_get_text(label), ::ui::fonts::ui_chrome_font());
     lv_obj_set_style_text_color(label, lv_color_hex(0x3A2A1A), 0);
     lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
     lv_obj_center(label);
@@ -118,7 +117,6 @@ void create(lv_obj_t* parent, const Spec& spec, Widgets& w)
 
     w.len_label = lv_label_create(w.action_bar);
     ::ui::i18n::set_label_text_fmt(w.len_label, "Remain: %u", 233U);
-    ::ui::fonts::apply_localized_font(w.len_label, lv_label_get_text(w.len_label), ::ui::fonts::ui_chrome_font());
     lv_obj_set_style_text_color(w.len_label, lv_color_hex(0x6A5646), 0);
 }
 

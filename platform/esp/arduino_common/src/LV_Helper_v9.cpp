@@ -633,6 +633,38 @@ lv_indev_t* lv_get_encoder_indev()
 }
 
 #if LV_USE_STDLIB_MALLOC == LV_STDLIB_CUSTOM
+namespace
+{
+constexpr size_t kLvglLargeAllocThresholdBytes = 2048;
+
+bool lvgl_has_psram()
+{
+#if HAS_PSRAM
+    return heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0;
+#else
+    return false;
+#endif
+}
+
+uint32_t lvgl_primary_caps(size_t size)
+{
+    if (lvgl_has_psram() && size >= kLvglLargeAllocThresholdBytes)
+    {
+        return MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+    }
+    return MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+}
+
+uint32_t lvgl_secondary_caps(size_t size)
+{
+    if (lvgl_has_psram() && size >= kLvglLargeAllocThresholdBytes)
+    {
+        return MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+    }
+    return MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+}
+} // namespace
+
 // LVGL 9.x custom memory management functions
 extern "C" void lv_mem_init(void)
 {
@@ -662,7 +694,11 @@ extern "C" void lv_mem_remove_pool(lv_mem_pool_t pool)
 extern "C" void* lv_malloc_core(size_t size)
 {
 #if HAS_PSRAM
-    return ps_malloc(size);
+    if (size == 0)
+    {
+        return nullptr;
+    }
+    return heap_caps_malloc_prefer(size, 2, lvgl_primary_caps(size), lvgl_secondary_caps(size));
 #else
     return malloc(size);
 #endif
@@ -671,7 +707,13 @@ extern "C" void* lv_malloc_core(size_t size)
 extern "C" void* lv_realloc_core(void* p, size_t new_size)
 {
 #if HAS_PSRAM
-    return ps_realloc(p, new_size);
+    if (new_size == 0)
+    {
+        heap_caps_free(p);
+        return nullptr;
+    }
+    return heap_caps_realloc_prefer(
+        p, new_size, 2, lvgl_primary_caps(new_size), lvgl_secondary_caps(new_size));
 #else
     return realloc(p, new_size);
 #endif
@@ -679,7 +721,11 @@ extern "C" void* lv_realloc_core(void* p, size_t new_size)
 
 extern "C" void lv_free_core(void* p)
 {
+#if HAS_PSRAM
+    heap_caps_free(p);
+#else
     free(p);
+#endif
 }
 
 extern "C" void lv_mem_monitor_core(lv_mem_monitor_t* mon_p)

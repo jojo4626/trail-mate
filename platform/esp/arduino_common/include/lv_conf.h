@@ -41,12 +41,11 @@
  * - LV_STDLIB_CUSTOM:      Implement the functions externally
  *
  * Note:
- * Original LilyGoLib used LV_STDLIB_CUSTOM with a custom implementation
- * of lv_malloc_core/lv_free_core in LV_Helper_v9.cpp. To simplify and
- * avoid linker issues, switch to LV_STDLIB_CLIB so LVGL uses the C
- * library's malloc/free internally.
+ * Keep LVGL on LV_STDLIB_CUSTOM so large runtime objects such as external
+ * binfont packs can prefer PSRAM while small control allocations stay in
+ * internal RAM. The custom allocator lives in LV_Helper_v9.cpp.
  */
-#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CLIB
+#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CUSTOM
 #define LV_USE_STDLIB_STRING    LV_STDLIB_BUILTIN
 #define LV_USE_STDLIB_SPRINTF   LV_STDLIB_BUILTIN
 

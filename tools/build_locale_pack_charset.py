@@ -52,14 +52,63 @@ def iter_extra_texts(extra_paths: list[Path]):
             raise FileNotFoundError(f"missing extra chars file: {path}")
         yield path.read_text(encoding="utf-8")
 
+def iter_charset_file_chars(paths: list[Path]):
+    for path in paths:
+        if not path.exists():
+            raise FileNotFoundError(f"missing charset file: {path}")
+        for ch in path.read_text(encoding="utf-8"):
+            if ch.isspace() or ord(ch) < 0x80:
+                continue
+            yield ch
 
-def collect_charset(pack_root: Path, extra_paths: list[Path]) -> list[str]:
+
+def iter_ranked_chars(path: Path, limit: int):
+    if not path.exists():
+        raise FileNotFoundError(f"missing ranked chars file: {path}")
+
+    emitted = 0
+    for ch in path.read_text(encoding="utf-8"):
+        if ch.isspace() or ord(ch) < 0x80:
+            continue
+        yield ch
+        emitted += 1
+        if limit > 0 and emitted >= limit:
+            break
+
+
+def collect_charset(pack_root: Path,
+                    include_manifests: bool,
+                    include_locales: bool,
+                    extra_paths: list[Path],
+                    seed_paths: list[Path],
+                    exclude_paths: list[Path],
+                    ranked_chars_path: Path | None,
+                    ranked_char_limit: int) -> list[str]:
     chars: set[str] = set()
-    for text in list(iter_manifest_texts(pack_root)) + list(iter_locale_texts(pack_root)) + list(iter_extra_texts(extra_paths)):
+
+    text_sources: list[str] = []
+    if include_manifests:
+        text_sources.extend(iter_manifest_texts(pack_root))
+    if include_locales:
+        text_sources.extend(iter_locale_texts(pack_root))
+    text_sources.extend(iter_extra_texts(extra_paths))
+
+    for text in text_sources:
         for ch in text:
             if ch.isspace() or ord(ch) < 0x80:
                 continue
             chars.add(ch)
+
+    for ch in iter_charset_file_chars(seed_paths):
+        chars.add(ch)
+
+    if ranked_chars_path is not None:
+        for ch in iter_ranked_chars(ranked_chars_path, ranked_char_limit):
+            chars.add(ch)
+
+    for ch in iter_charset_file_chars(exclude_paths):
+        chars.discard(ch)
+
     return sorted(chars, key=ord)
 
 
@@ -86,7 +135,7 @@ def write_ranges(path: Path, chars: list[str]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build charset files for a locale pack bundle.")
+    parser = argparse.ArgumentParser(description="Build charset files for a locale/font pack bundle.")
     parser.add_argument("--pack-root", type=Path, required=True, help="Pack bundle root, for example packs/zh-Hans")
     parser.add_argument(
         "--font-pack-id",
@@ -98,6 +147,40 @@ def main() -> int:
         action="append",
         default=[],
         help="UTF-8 text file with additional glyphs to include. May be passed multiple times.",
+    )
+    parser.add_argument(
+        "--seed-charset-file",
+        action="append",
+        default=[],
+        help="Existing charset file whose glyphs should be unioned into the output. May be passed multiple times.",
+    )
+    parser.add_argument(
+        "--exclude-charset-file",
+        action="append",
+        default=[],
+        help="Existing charset file whose glyphs should be removed from the output. May be passed multiple times.",
+    )
+    parser.add_argument(
+        "--ranked-chars-file",
+        type=Path,
+        default=None,
+        help="UTF-8 ranked glyph file. The first --ranked-char-limit non-ASCII glyphs are added to the output.",
+    )
+    parser.add_argument(
+        "--ranked-char-limit",
+        type=int,
+        default=0,
+        help="Maximum number of glyphs to consume from --ranked-chars-file. Use 0 for all.",
+    )
+    parser.add_argument(
+        "--no-include-manifests",
+        action="store_true",
+        help="Do not include display_name/native_name text from manifest.ini files under the bundle.",
+    )
+    parser.add_argument(
+        "--no-include-locales",
+        action="store_true",
+        help="Do not include localized strings.tsv text from the bundle.",
     )
     parser.add_argument(
         "--charset-out",
@@ -115,17 +198,29 @@ def main() -> int:
 
     pack_root = args.pack_root.resolve()
     extra_paths = [Path(item).resolve() for item in args.extra_chars_file]
+    seed_paths = [Path(item).resolve() for item in args.seed_charset_file]
+    exclude_paths = [Path(item).resolve() for item in args.exclude_charset_file]
+    ranked_chars_path = args.ranked_chars_file.resolve() if args.ranked_chars_file else None
     font_pack_dir = resolve_font_pack_dir(pack_root, args.font_pack_id)
     charset_out = args.charset_out or (font_pack_dir / "charset.txt")
     ranges_out = args.ranges_out or (font_pack_dir / "ranges.txt")
 
-    chars = collect_charset(pack_root, extra_paths)
+    chars = collect_charset(pack_root,
+                            include_manifests=not args.no_include_manifests,
+                            include_locales=not args.no_include_locales,
+                            extra_paths=extra_paths,
+                            seed_paths=seed_paths,
+                            exclude_paths=exclude_paths,
+                            ranked_chars_path=ranked_chars_path,
+                            ranked_char_limit=max(0, args.ranked_char_limit))
     write_charset(charset_out, chars)
     write_ranges(ranges_out, chars)
 
     print(f"pack_root={pack_root}")
     print(f"font_pack_dir={font_pack_dir}")
     print(f"glyph_count={len(chars)}")
+    print(f"include_manifests={0 if args.no_include_manifests else 1}")
+    print(f"include_locales={0 if args.no_include_locales else 1}")
     print(f"charset_out={charset_out}")
     print(f"ranges_out={ranges_out}")
     return 0

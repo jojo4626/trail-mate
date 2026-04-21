@@ -5,6 +5,12 @@
 
 #include "ui/ui_boot.h"
 
+#include <cstring>
+
+#if !defined(LV_FONT_MONTSERRAT_12) || !LV_FONT_MONTSERRAT_12
+#define lv_font_montserrat_12 lv_font_montserrat_14
+#endif
+
 namespace
 {
 
@@ -15,12 +21,18 @@ constexpr uint32_t kMinShowMs = 900;
 constexpr uint32_t kMinShowMs = 3000;
 #endif
 constexpr uint32_t kBootBgColor = 0xF6E6C6;
+constexpr uint32_t kBootLogTextColor = 0x8A6A3A;
+constexpr lv_coord_t kBootLogPadX = 10;
+constexpr lv_coord_t kBootLogPadBottom = 8;
+constexpr std::size_t kBootLogTextCapacity = 96;
 
 lv_obj_t* s_root = nullptr;
 lv_obj_t* s_logo = nullptr;
+lv_obj_t* s_log_label = nullptr;
 lv_timer_t* s_gate_timer = nullptr;
 uint32_t s_start_ms = 0;
 bool s_ready = false;
+char s_log_text[kBootLogTextCapacity] = "";
 
 extern "C"
 {
@@ -46,10 +58,12 @@ void cleanup()
         lv_obj_del(s_root);
         s_root = nullptr;
         s_logo = nullptr;
+        s_log_label = nullptr;
     }
 
     s_ready = false;
     s_start_ms = 0;
+    s_log_text[0] = '\0';
 }
 
 void check_gate()
@@ -66,6 +80,17 @@ void check_gate()
     }
 
     cleanup();
+}
+
+void refresh_log_label()
+{
+    if (!s_log_label)
+    {
+        return;
+    }
+
+    lv_label_set_text(s_log_label, s_log_text);
+    lv_refr_now(nullptr);
 }
 
 } // namespace
@@ -122,6 +147,15 @@ void show()
     lv_anim_start(&anim);
 #endif
 
+    s_log_label = lv_label_create(s_root);
+    lv_obj_set_width(s_log_label, screen_w - (kBootLogPadX * 2));
+    lv_obj_set_style_text_color(s_log_label, lv_color_hex(kBootLogTextColor), 0);
+    lv_obj_set_style_text_font(s_log_label, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_align(s_log_label, LV_TEXT_ALIGN_LEFT, 0);
+    lv_label_set_long_mode(s_log_label, LV_LABEL_LONG_DOT);
+    lv_obj_align(s_log_label, LV_ALIGN_BOTTOM_LEFT, kBootLogPadX, -kBootLogPadBottom);
+    lv_label_set_text(s_log_label, s_log_text);
+
     s_gate_timer = lv_timer_create(
         [](lv_timer_t*)
         {
@@ -129,6 +163,19 @@ void show()
         },
         50, nullptr);
     lv_timer_set_repeat_count(s_gate_timer, -1);
+}
+
+void set_log_line(const char* text)
+{
+    const char* value = text ? text : "";
+    if (std::strcmp(s_log_text, value) == 0)
+    {
+        return;
+    }
+
+    std::strncpy(s_log_text, value, kBootLogTextCapacity - 1);
+    s_log_text[kBootLogTextCapacity - 1] = '\0';
+    refresh_log_label();
 }
 
 void mark_ready()

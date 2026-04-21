@@ -66,6 +66,16 @@ class AppTasks
         return radio_rx_queue_;
     }
 
+    static TaskHandle_t getRadioTaskHandle()
+    {
+        return radio_task_handle_;
+    }
+
+    static TaskHandle_t getMeshTaskHandle()
+    {
+        return mesh_task_handle_;
+    }
+
     /**
      * @brief Pause radio + mesh tasks (for exclusive radio modes like walkie-talkie)
      */

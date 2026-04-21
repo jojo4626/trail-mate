@@ -39,7 +39,8 @@ class GpsService
     void setMotionIdleTimeout(uint32_t timeout_ms);
     void setMotionSensorId(uint8_t sensor_id);
     TaskHandle_t getTaskHandle() const { return gps_task_handle_; }
-    bool isEnabled() const { return !gps_disabled_ && gps_board_ != nullptr; }
+    TaskHandle_t getMotionTaskHandle() const { return motion_task_handle_; }
+    bool isEnabled() const { return !gps_disabled_ && gps_ready_; }
     bool isPowered() const { return gps_powered_; }
     uint32_t getLastMotionMs() const;
 
@@ -72,6 +73,7 @@ class GpsService
     bool gps_time_synced_ = false;
     bool gps_powered_ = false;
     bool gps_disabled_ = false;
+    bool gps_ready_ = false;
 
     MotionConfig motion_config_{};
     MotionPolicy motion_policy_{};

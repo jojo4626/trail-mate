@@ -12,6 +12,7 @@
 #include "ui/app_registry.h"
 #include "ui/app_runtime.h"
 #include "ui/startup_shell.h"
+#include "ui/ui_boot.h"
 
 namespace
 {
@@ -77,6 +78,7 @@ void run()
     ui::startup_shell::prepareBootUi(waking_from_sleep);
 
     bool use_mock = false;
+    ui::boot::set_log_line("Initializing app context...");
     if (apps::esp_pio::app_runtime_access::initialize(use_mock))
     {
         const auto& runtime_status = apps::esp_pio::app_runtime_access::status();
@@ -94,7 +96,9 @@ void run()
                       runtime_status.background_tasks_started ? 1 : 0);
     }
 
+    ui::boot::set_log_line("Building main menu...");
     initializeShell();
+    ui::boot::set_log_line("Startup complete");
     finishStartup(waking_from_sleep);
 }
 

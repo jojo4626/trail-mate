@@ -24,6 +24,7 @@
 #include "platform/ui/tracker_runtime.h"
 #include "platform/ui/wifi_runtime.h"
 #include "ui/app_runtime.h"
+#include "ui/assets/fonts/font_utils.h"
 #include "ui/components/info_card.h"
 #include "ui/localization.h"
 #include "ui/menu/menu_layout.h"
@@ -97,6 +98,7 @@ static void update_item_value(settings::ui::ItemWidget& widget);
 static void open_factory_reset_modal();
 static bool option_labels_are_translated(const settings::ui::SettingItem& item);
 static bool option_labels_use_content_font(const settings::ui::SettingItem& item);
+static void apply_locale_preview_font(lv_obj_t* label, const settings::ui::SettingItem& item, int value);
 
 static void copy_bounded(char* out, size_t out_len, const char* text)
 {
@@ -947,6 +949,11 @@ static void update_item_value(settings::ui::ItemWidget& widget)
     else
     {
         ::ui::i18n::set_label_text_raw(widget.value_label, value);
+    }
+
+    if (widget.def->enum_value)
+    {
+        apply_locale_preview_font(widget.value_label, *widget.def, *widget.def->enum_value);
     }
 }
 
@@ -1875,6 +1882,7 @@ static void open_option_modal(const settings::ui::SettingItem& item, settings::u
         }
         style::apply_label_primary(label);
         lv_obj_center(label);
+        apply_locale_preview_font(label, item, item.options[i].value);
 
         s_option_clicks[s_option_click_count] = {&item, item.options[i].value, &widget};
         lv_obj_add_event_cb(btn, on_option_clicked, LV_EVENT_CLICKED,
@@ -2346,6 +2354,37 @@ static bool option_labels_use_content_font(const settings::ui::SettingItem& item
 {
     return has_pref_key(item, "display_locale") ||
            has_pref_key(item, "wifi_network");
+}
+
+static const ::ui::i18n::LocaleInfo* locale_info_for_option_value(const settings::ui::SettingItem& item, int value)
+{
+    if (!has_pref_key(item, "display_locale") || value < 0)
+    {
+        return nullptr;
+    }
+
+    return ::ui::i18n::locale_at(static_cast<std::size_t>(value));
+}
+
+static void apply_locale_preview_font(lv_obj_t* label, const settings::ui::SettingItem& item, int value)
+{
+    if (!label)
+    {
+        return;
+    }
+
+    const ::ui::i18n::LocaleInfo* locale = locale_info_for_option_value(item, value);
+    if (!locale || !locale->id)
+    {
+        return;
+    }
+
+    const lv_font_t* preview_font =
+        ::ui::i18n::locale_preview_font(locale->id, ::ui::fonts::ui_chrome_font());
+    if (preview_font)
+    {
+        lv_obj_set_style_text_font(label, preview_font, 0);
+    }
 }
 
 static bool should_show_item(const settings::ui::SettingItem& item)

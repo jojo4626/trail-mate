@@ -11,8 +11,10 @@
 #include "board/MotionBoard.h"
 #include "chat/infra/mesh_protocol_utils.h"
 #include "chat/runtime/self_identity_policy.h"
+#include "platform/esp/arduino_common/memory_diag.h"
 #include "sys/event_bus.h"
 #include "ui/chat_ui_runtime_proxy.h"
+#include "ui/ui_boot.h"
 #ifdef USING_ST25R3916
 #endif
 #include <cstdio>
@@ -259,25 +261,40 @@ bool AppContext::init(BoardBase& board, LoraBoard* lora_board, GpsBoard* gps_boa
     }
 
     assignBoards(board, lora_board, gps_board, motion_board);
+    platform::esp::arduino_common::memory_diag::logHeapSnapshot("appctx.after_assign_boards");
 
     if (!sys::EventBus::init())
     {
         return false;
     }
+    platform::esp::arduino_common::memory_diag::logHeapSnapshot("appctx.after_event_bus");
 
     if (platform_bindings_.load_app_config)
     {
+        ::ui::boot::set_log_line("Loading app config...");
         platform_bindings_.load_app_config(config_);
     }
+    platform::esp::arduino_common::memory_diag::logHeapSnapshot("appctx.after_load_config");
+    ::ui::boot::set_log_line("Initializing GPS services...");
     initGpsRuntime(disable_hw_init);
+    platform::esp::arduino_common::memory_diag::logHeapSnapshot("appctx.after_gps_runtime");
     initTrackRecorder();
+    platform::esp::arduino_common::memory_diag::logHeapSnapshot("appctx.after_track_recorder");
+    ::ui::boot::set_log_line("Initializing chat runtime...");
     initChatRuntime(use_mock_adapter);
+    platform::esp::arduino_common::memory_diag::logHeapSnapshot("appctx.after_chat_runtime");
+    ::ui::boot::set_log_line("Initializing team services...");
     initTeamServices();
+    platform::esp::arduino_common::memory_diag::logHeapSnapshot("appctx.after_team_services");
+    ::ui::boot::set_log_line("Initializing contacts...");
     initContactServices();
+    platform::esp::arduino_common::memory_diag::logHeapSnapshot("appctx.after_contact_services");
     if (platform_bindings_.finalize_startup)
     {
+        ::ui::boot::set_log_line("Finalizing startup...");
         platform_bindings_.finalize_startup(*this);
     }
+    platform::esp::arduino_common::memory_diag::logHeapSnapshot("appctx.after_finalize_startup");
 
     return true;
 }

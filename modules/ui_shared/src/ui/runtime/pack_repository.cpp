@@ -52,12 +52,14 @@ namespace
 constexpr const char* kCatalogUrl = "https://vicliu624.github.io/trail-mate/data/packs.json";
 constexpr const char* kCatalogBaseUrl = "https://vicliu624.github.io/trail-mate";
 constexpr const char* kPackRoot = "/trailmate/packs";
-constexpr const char* kIndexDir = "/trailmate/packs/.index";
-constexpr const char* kTempDir = "/trailmate/packs/.index/tmp";
-constexpr const char* kInstalledIndexPath = "/trailmate/packs/.index/installed.json";
+constexpr const char* kIndexDir = "/trailmate/packs/index";
+constexpr const char* kTempDir = "/trailmate/packs/index/tmp";
+constexpr const char* kInstalledIndexPath = "/trailmate/packs/index/installed.json";
+constexpr const char* kLegacyInstalledIndexPath = "/trailmate/packs/.index/installed.json";
 constexpr int kHttpBufferSize = 1024;
 constexpr int kHttpTxBufferSize = 512;
 constexpr std::size_t kTlsLargeAllocThresholdBytes = 4096;
+constexpr std::size_t kFileWriteChunkBytes = 4096;
 constexpr std::size_t kZipEocdMinSize = 22;
 constexpr std::size_t kZipTailSearchMax = 0x10000 + kZipEocdMinSize;
 constexpr std::uint32_t kZipEocdSignature = 0x06054B50u;
@@ -180,6 +182,27 @@ std::string join_url(const std::string& base, const std::string& path)
     return normalized_base + "/" + path;
 }
 
+std::string join_logical_path(const std::string& base, const std::string& leaf)
+{
+    if (base.empty())
+    {
+        return leaf;
+    }
+    if (leaf.empty())
+    {
+        return base;
+    }
+    if (leaf.front() == '/')
+    {
+        return leaf;
+    }
+    if (base.back() == '/')
+    {
+        return base + leaf;
+    }
+    return base + "/" + leaf;
+}
+
 std::string active_memory_profile_name()
 {
     const ui::runtime::MemoryProfile& profile = ui::runtime::current_memory_profile();
@@ -192,6 +215,7 @@ struct ParsedVersion
     int minor = 0;
     int patch = 0;
     std::string prerelease;
+    bool valid = false;
 };
 
 ParsedVersion parse_version(const std::string& text)
@@ -203,6 +227,23 @@ ParsedVersion parse_version(const std::string& text)
     }
 
     std::string numeric = text;
+
+    const std::size_t first_digit = numeric.find_first_of("0123456789");
+    if (first_digit == std::string::npos)
+    {
+        return version;
+    }
+    if (first_digit > 0)
+    {
+        numeric = numeric.substr(first_digit);
+    }
+
+    const std::size_t plus = numeric.find('+');
+    if (plus != std::string::npos)
+    {
+        numeric = numeric.substr(0, plus);
+    }
+
     const std::size_t dash = numeric.find('-');
     if (dash != std::string::npos)
     {
@@ -221,7 +262,13 @@ ParsedVersion parse_version(const std::string& text)
             end == std::string::npos ? std::string::npos : (end - start));
         if (!token.empty())
         {
-            parts[part_index] = std::atoi(token.c_str());
+            char* parse_end = nullptr;
+            const long parsed = std::strtol(token.c_str(), &parse_end, 10);
+            if (parse_end != token.c_str())
+            {
+                parts[part_index] = static_cast<int>(parsed);
+                version.valid = true;
+            }
         }
         ++part_index;
         if (end == std::string::npos)
@@ -279,25 +326,32 @@ bool ensure_dir_recursive(const std::string& logical_dir)
     }
 
     std::string current;
-    for (char ch : logical_dir)
+    std::size_t start = 0;
+    while (start < logical_dir.size())
     {
-        current.push_back(ch);
-        if (ch != '/')
+        const std::size_t slash = logical_dir.find('/', start);
+        const std::size_t end =
+            (slash == std::string::npos) ? logical_dir.size() : slash;
+        const std::string segment = logical_dir.substr(start, end - start);
+        if (!segment.empty())
         {
-            continue;
-        }
-        if (!current.empty() && !SD.exists(current.c_str()))
-        {
-            if (!SD.mkdir(current.c_str()))
+            current.push_back('/');
+            current += segment;
+            if (!SD.exists(current.c_str()))
             {
-                return false;
+                if (!SD.mkdir(current.c_str()))
+                {
+                    std::printf("[Packs] mkdir failed path=%s\n", current.c_str());
+                    return false;
+                }
             }
         }
-    }
 
-    if (!SD.exists(logical_dir.c_str()))
-    {
-        return SD.mkdir(logical_dir.c_str());
+        if (slash == std::string::npos)
+        {
+            break;
+        }
+        start = slash + 1;
     }
     return true;
 }
@@ -326,12 +380,33 @@ bool write_binary_file(const std::string& logical_path, const void* data, std::s
     File file = SD.open(logical_path.c_str(), FILE_WRITE);
     if (!file)
     {
+        std::printf("[Packs] open for write failed path=%s len=%lu\n",
+                    logical_path.c_str(),
+                    static_cast<unsigned long>(len));
         return false;
     }
 
-    const std::size_t written = file.write(static_cast<const std::uint8_t*>(data), len);
+    const std::uint8_t* bytes = static_cast<const std::uint8_t*>(data);
+    std::size_t written = 0;
+    while (written < len)
+    {
+        const std::size_t chunk = std::min(kFileWriteChunkBytes, len - written);
+        const std::size_t chunk_written = file.write(bytes + written, chunk);
+        if (chunk_written != chunk)
+        {
+            std::printf("[Packs] write failed path=%s offset=%lu chunk=%lu wrote=%lu total=%lu\n",
+                        logical_path.c_str(),
+                        static_cast<unsigned long>(written),
+                        static_cast<unsigned long>(chunk),
+                        static_cast<unsigned long>(chunk_written),
+                        static_cast<unsigned long>(len));
+            file.close();
+            return false;
+        }
+        written += chunk_written;
+    }
     file.close();
-    return written == len;
+    return true;
 }
 
 bool write_text_file(const std::string& logical_path, const std::string& text)
@@ -379,6 +454,68 @@ bool remove_file_if_exists(const std::string& logical_path)
         return true;
     }
     return SD.remove(logical_path.c_str());
+}
+
+bool remove_dir_recursive_if_exists(const std::string& logical_path)
+{
+    if (logical_path.empty() || !SD.exists(logical_path.c_str()))
+    {
+        return true;
+    }
+
+    File node = SD.open(logical_path.c_str(), FILE_READ);
+    if (!node)
+    {
+        return false;
+    }
+
+    if (!node.isDirectory())
+    {
+        node.close();
+        return SD.remove(logical_path.c_str());
+    }
+
+    while (true)
+    {
+        File entry = node.openNextFile();
+        if (!entry)
+        {
+            break;
+        }
+
+        std::string child_path = entry.name();
+        if (!child_path.empty() && child_path.front() != '/')
+        {
+            child_path = join_logical_path(logical_path, child_path);
+        }
+
+        const bool is_dir = entry.isDirectory();
+        entry.close();
+
+        if (child_path.empty())
+        {
+            continue;
+        }
+
+        if (is_dir)
+        {
+            if (!remove_dir_recursive_if_exists(child_path))
+            {
+                node.close();
+                return false;
+            }
+            continue;
+        }
+
+        if (!SD.remove(child_path.c_str()))
+        {
+            node.close();
+            return false;
+        }
+    }
+
+    node.close();
+    return SD.rmdir(logical_path.c_str());
 }
 
 class RandomAccessFile
@@ -514,9 +651,23 @@ bool write_binary_file(const std::string& logical_path, const void* data, std::s
     {
         return false;
     }
-    const std::size_t written = std::fwrite(data, 1, len, file);
+
+    const std::uint8_t* bytes = static_cast<const std::uint8_t*>(data);
+    std::size_t written = 0;
+    while (written < len)
+    {
+        const std::size_t chunk = std::min(kFileWriteChunkBytes, len - written);
+        const std::size_t chunk_written = std::fwrite(bytes + written, 1, chunk, file);
+        if (chunk_written != chunk)
+        {
+            std::fclose(file);
+            return false;
+        }
+        written += chunk_written;
+    }
+
     std::fclose(file);
-    return written == len;
+    return true;
 }
 
 bool write_text_file(const std::string& logical_path, const std::string& text)
@@ -580,6 +731,74 @@ bool remove_file_if_exists(const std::string& logical_path)
         return true;
     }
     return std::remove(host_path(logical_path).c_str()) == 0;
+}
+
+bool remove_dir_recursive_if_exists(const std::string& logical_path)
+{
+    if (logical_path.empty())
+    {
+        return true;
+    }
+
+    const std::string host_dir = host_path(logical_path);
+    struct stat st
+    {
+    };
+    if (::stat(host_dir.c_str(), &st) != 0)
+    {
+        return errno == ENOENT;
+    }
+
+    if (!S_ISDIR(st.st_mode))
+    {
+        return std::remove(host_dir.c_str()) == 0;
+    }
+
+    DIR* dir = ::opendir(host_dir.c_str());
+    if (!dir)
+    {
+        return false;
+    }
+
+    bool ok = true;
+    while (ok)
+    {
+        struct dirent* entry = ::readdir(dir);
+        if (!entry)
+        {
+            break;
+        }
+
+        const char* name = entry->d_name;
+        if (!name || std::strcmp(name, ".") == 0 || std::strcmp(name, "..") == 0)
+        {
+            continue;
+        }
+
+        const std::string child_logical = join_logical_path(logical_path, name);
+        const std::string child_host = host_path(child_logical);
+
+        struct stat child_st
+        {
+        };
+        if (::stat(child_host.c_str(), &child_st) != 0)
+        {
+            ok = false;
+            break;
+        }
+
+        if (S_ISDIR(child_st.st_mode))
+        {
+            ok = remove_dir_recursive_if_exists(child_logical);
+        }
+        else
+        {
+            ok = std::remove(child_host.c_str()) == 0;
+        }
+    }
+
+    ::closedir(dir);
+    return ok && ::rmdir(host_dir.c_str()) == 0;
 }
 
 class RandomAccessFile
@@ -1011,7 +1230,24 @@ bool compatible_with_firmware(const PackageRecord& package)
     {
         return true;
     }
-    return compare_versions(platform::ui::device::firmware_version(),
+
+    const char* current_version = platform::ui::device::firmware_version();
+    const ParsedVersion current = parse_version(current_version ? current_version : "");
+    const ParsedVersion required = parse_version(package.min_firmware_version);
+
+    if (!required.valid)
+    {
+        return true;
+    }
+    if (!current.valid)
+    {
+        std::printf("[Packs] firmware gate skipped current=%s required=%s\n",
+                    current_version ? current_version : "<null>",
+                    package.min_firmware_version.c_str());
+        return true;
+    }
+
+    return compare_versions(current_version ? current_version : "",
                             package.min_firmware_version) >= 0;
 }
 
@@ -1020,13 +1256,22 @@ bool load_installed_index(InstalledIndex& out_index, std::string& out_error)
     out_index = InstalledIndex{};
     out_error.clear();
 
-    if (!logical_file_exists(kInstalledIndexPath))
+    const char* index_path = nullptr;
+    if (logical_file_exists(kInstalledIndexPath))
+    {
+        index_path = kInstalledIndexPath;
+    }
+    else if (logical_file_exists(kLegacyInstalledIndexPath))
+    {
+        index_path = kLegacyInstalledIndexPath;
+    }
+    else
     {
         return true;
     }
 
     std::string text;
-    if (!read_text_file(kInstalledIndexPath, text))
+    if (!read_text_file(index_path, text))
     {
         out_error = "Read installed index failed";
         return false;
@@ -1293,7 +1538,7 @@ bool extract_zip_payload(const std::string& logical_zip_path, std::string& out_e
 
         if (!write_binary_file(logical_target, output.data(), output.size()))
         {
-            out_error = "Write extracted payload failed";
+            out_error = std::string("Write extracted payload failed: ") + logical_target;
             file.close();
             return false;
         }
@@ -1322,6 +1567,41 @@ void merge_installed_state(const std::vector<InstalledPackageRecord>& installed,
             break;
         }
     }
+}
+
+bool remove_package_payload(const PackageRecord& package, std::string& out_error)
+{
+    const struct PayloadGroup
+    {
+        const char* dir_name;
+        const std::vector<std::string>* ids;
+        const char* label;
+    } groups[] = {
+        {"locales", &package.provided_locale_ids, "locale"},
+        {"fonts", &package.provided_font_ids, "font"},
+        {"ime", &package.provided_ime_ids, "IME"},
+    };
+
+    for (const PayloadGroup& group : groups)
+    {
+        for (const std::string& id : *group.ids)
+        {
+            if (id.empty())
+            {
+                continue;
+            }
+
+            const std::string logical_path =
+                join_logical_path(join_logical_path(kPackRoot, group.dir_name), id);
+            if (!remove_dir_recursive_if_exists(logical_path))
+            {
+                out_error = std::string("Remove ") + group.label + " pack failed";
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 } // namespace
@@ -1540,6 +1820,50 @@ bool install_package(const PackageRecord& package, std::string& out_error)
     return true;
 }
 
+bool uninstall_package(const PackageRecord& package, std::string& out_error)
+{
+    out_error.clear();
+
+    if (package.id.empty())
+    {
+        out_error = "Package metadata is incomplete";
+        return false;
+    }
+    if (!platform::ui::device::card_ready())
+    {
+        out_error = "SD card is not ready";
+        return false;
+    }
+
+    InstalledIndex index;
+    if (!load_installed_index(index, out_error))
+    {
+        return false;
+    }
+
+    if (!remove_package_payload(package, out_error))
+    {
+        return false;
+    }
+
+    index.packages.erase(
+        std::remove_if(index.packages.begin(),
+                       index.packages.end(),
+                       [&](const InstalledPackageRecord& record)
+                       {
+                           return record.id == package.id;
+                       }),
+        index.packages.end());
+
+    if (!save_installed_index(index, out_error))
+    {
+        return false;
+    }
+
+    ::ui::i18n::reload_language();
+    return true;
+}
+
 } // namespace ui::runtime::packs
 
 #else
@@ -1567,6 +1891,13 @@ bool fetch_catalog(std::vector<PackageRecord>& out_packages, std::string& out_er
 }
 
 bool install_package(const PackageRecord& package, std::string& out_error)
+{
+    (void)package;
+    out_error = "Pack installation is unsupported on this platform";
+    return false;
+}
+
+bool uninstall_package(const PackageRecord& package, std::string& out_error)
 {
     (void)package;
     out_error = "Pack installation is unsupported on this platform";

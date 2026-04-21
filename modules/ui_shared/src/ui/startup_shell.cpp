@@ -2,6 +2,7 @@
 
 #include <ctime>
 
+#include "lvgl.h"
 #include "platform/ui/screen_runtime.h"
 #include "platform/ui/time_runtime.h"
 #include "ui/app_runtime.h"
@@ -16,6 +17,16 @@
 
 namespace ui::startup_shell
 {
+namespace
+{
+
+void present_boot_overlay_now()
+{
+    lv_timer_handler();
+    lv_refr_now(nullptr);
+}
+
+} // namespace
 
 bool format_menu_time(char* out, size_t out_len)
 {
@@ -94,12 +105,14 @@ platform::ui::screen::Hooks buildScreenSleepHooks(const Hooks& hooks)
 
 void prepareBootUi(bool waking_from_sleep)
 {
-    ::ui::i18n::reload_language();
-    ui::SystemNotification::init();
     if (!waking_from_sleep)
     {
         ui::boot::show();
+        ui::boot::set_log_line("Loading language packs...");
+        present_boot_overlay_now();
     }
+    ::ui::i18n::reload_language();
+    ui::SystemNotification::init();
 }
 
 void initializeShell(const Hooks& hooks)

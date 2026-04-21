@@ -417,7 +417,7 @@ MeshtasticBleService::~MeshtasticBleService()
     stop();
 }
 
-void MeshtasticBleService::start()
+bool MeshtasticBleService::start()
 {
     loadBleConfig();
     loadModuleConfig();
@@ -426,16 +426,40 @@ void MeshtasticBleService::start()
             pairingModeName(ble_config_.mode),
             static_cast<unsigned long>(ble_config_.fixed_pin));
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-    NimBLEDevice::setMTU(kPreferredBleMtu);
+    if (!NimBLEDevice::setMTU(kPreferredBleMtu))
+    {
+        ble_log("start failed reason=set_mtu mtu=%u", static_cast<unsigned>(kPreferredBleMtu));
+        stop();
+        return false;
+    }
     applyBleSecurity();
 
     from_phone_mutex_ = xSemaphoreCreateMutex();
     to_phone_mutex_ = xSemaphoreCreateMutex();
+    if (!from_phone_mutex_ || !to_phone_mutex_)
+    {
+        ble_log("start failed reason=mutex_alloc");
+        stop();
+        return false;
+    }
 
     server_ = NimBLEDevice::createServer();
+    if (!server_)
+    {
+        ble_log("start failed reason=create_server");
+        stop();
+        return false;
+    }
     server_->setCallbacks(new MeshtasticServerCallbacks(*this));
 
     setupService();
+    if (!service_ || !to_radio_ || !from_radio_ || !from_num_ || !log_radio_ ||
+        !battery_service_ || !battery_level_)
+    {
+        ble_log("start failed reason=service_alloc");
+        stop();
+        return false;
+    }
     startAdvertising();
 
     ctx_.getChatService().addIncomingTextObserver(this);
@@ -446,6 +470,13 @@ void MeshtasticBleService::start()
     }
 
     phone_session_.reset(new MeshtasticPhoneSession(ctx_, *this, this));
+    if (!phone_session_)
+    {
+        ble_log("start failed reason=phone_session_alloc");
+        stop();
+        return false;
+    }
+    return true;
 }
 
 void MeshtasticBleService::stop()

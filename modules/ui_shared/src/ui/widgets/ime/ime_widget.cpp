@@ -107,9 +107,8 @@ void set_button_label(lv_obj_t* button, const char* text)
     {
         label = lv_label_create(button);
     }
-    lv_obj_set_style_text_font(label, ::ui::fonts::localized_font(::ui::fonts::ui_chrome_font()), 0);
     lv_obj_set_style_text_color(label, lv_color_hex(0x3A2A1A), 0);
-    lv_label_set_text(label, text ? text : "");
+    ::ui::i18n::set_content_label_text_raw(label, text ? text : "");
     lv_obj_center(label);
 }
 
@@ -177,6 +176,22 @@ bool resolve_touch_button_id(lv_event_t* e, lv_obj_t* matrix, uint32_t& button_i
 }
 #endif
 
+void refresh_textarea_content_font(lv_obj_t* textarea)
+{
+    if (!textarea)
+    {
+        return;
+    }
+
+    const char* text = lv_textarea_get_text(textarea);
+    ::ui::fonts::apply_content_font(textarea, text ? text : "", ::ui::fonts::ui_chrome_font());
+}
+
+void set_candidates_label_text(lv_obj_t* label, const char* text)
+{
+    ::ui::i18n::set_content_label_text_raw(label, text ? text : "");
+}
+
 } // namespace
 
 extern "C" void ui_ime_toggle_mode()
@@ -202,6 +217,7 @@ void ImeWidget::init(lv_obj_t* parent, lv_obj_t* textarea)
     {
         const char* cur = lv_textarea_get_text(textarea_);
         committed_text_ = cur ? std::string(cur) : std::string();
+        refresh_textarea_content_font(textarea_);
     }
     s_active_ime = this;
 
@@ -269,8 +285,7 @@ void ImeWidget::init_compact_ui(lv_obj_t* parent)
         LV_EVENT_KEY, this);
 
     candidates_label_ = lv_label_create(container_);
-    lv_label_set_text(candidates_label_, "");
-    lv_obj_set_style_text_font(candidates_label_, ::ui::fonts::localized_font(::ui::fonts::ui_chrome_font()), 0);
+    set_candidates_label_text(candidates_label_, "");
     lv_obj_set_style_text_color(candidates_label_, lv_color_hex(0x3A2A1A), 0);
     lv_obj_set_flex_grow(candidates_label_, 1);
     lv_obj_set_style_text_align(candidates_label_, LV_TEXT_ALIGN_RIGHT, 0);
@@ -336,10 +351,9 @@ void ImeWidget::init_touch_ui(lv_obj_t* parent)
         LV_EVENT_KEY, this);
 
     candidates_label_ = lv_label_create(top_row_);
-    ::ui::i18n::set_label_text(candidates_label_, "English keyboard");
+    set_candidates_label_text(candidates_label_, ::ui::i18n::tr("English keyboard"));
     lv_obj_set_flex_grow(candidates_label_, 1);
     lv_obj_set_style_text_align(candidates_label_, LV_TEXT_ALIGN_LEFT, 0);
-    lv_obj_set_style_text_font(candidates_label_, ::ui::fonts::localized_font(::ui::fonts::ui_chrome_font()), 0);
     lv_obj_set_style_text_color(candidates_label_, lv_color_hex(0x6B4A1E), 0);
 
     candidate_row_ = lv_obj_create(container_);
@@ -445,6 +459,7 @@ void ImeWidget::setMode(Mode mode)
         {
             lv_textarea_set_accepted_chars(textarea_, nullptr);
         }
+        refresh_textarea_content_font(textarea_);
     }
     candidate_window_start_ = 0;
     refresh_labels();
@@ -661,6 +676,7 @@ void ImeWidget::sync_textarea()
         return;
     }
     lv_textarea_set_text(textarea_, committed_text_.c_str());
+    refresh_textarea_content_font(textarea_);
     lv_textarea_set_cursor_pos(textarea_, LV_TEXTAREA_CURSOR_LAST);
     lv_obj_add_state(textarea_, LV_STATE_FOCUSED);
     if (lv_group_get_default())
@@ -821,13 +837,13 @@ void ImeWidget::refresh_labels()
 #if UI_SHARED_TOUCH_IME_ENABLED
         if (touch_keyboard_enabled_)
         {
-            ::ui::i18n::set_label_text(candidates_label_, "English keyboard");
+            set_candidates_label_text(candidates_label_, ::ui::i18n::tr("English keyboard"));
             refresh_touch_keyboard();
             refresh_touch_candidates();
             return;
         }
 #endif
-        lv_label_set_text(candidates_label_, "");
+        set_candidates_label_text(candidates_label_, "");
         return;
     }
 
@@ -837,13 +853,13 @@ void ImeWidget::refresh_labels()
 #if UI_SHARED_TOUCH_IME_ENABLED
         if (touch_keyboard_enabled_)
         {
-            ::ui::i18n::set_label_text(candidates_label_, "Number keyboard");
+            set_candidates_label_text(candidates_label_, ::ui::i18n::tr("Number keyboard"));
             refresh_touch_keyboard();
             refresh_touch_candidates();
             return;
         }
 #endif
-        lv_label_set_text(candidates_label_, "");
+        set_candidates_label_text(candidates_label_, "");
         return;
     }
 
@@ -854,7 +870,7 @@ void ImeWidget::refresh_labels()
         std::string hint = ime_.hasBuffer()
                                ? ::ui::i18n::format("Pinyin: %s", ime_.buffer().c_str())
                                : std::string(::ui::i18n::tr("Pinyin keyboard"));
-        lv_label_set_text(candidates_label_, hint.c_str());
+        set_candidates_label_text(candidates_label_, hint.c_str());
         refresh_touch_keyboard();
         refresh_touch_candidates();
         return;
@@ -872,11 +888,11 @@ void ImeWidget::refresh_candidates()
     }
     if (!ime_.hasBuffer())
     {
-        lv_label_set_text(candidates_label_, "");
+        set_candidates_label_text(candidates_label_, "");
         return;
     }
     std::string text = make_candidates_text(ime_.candidates(), ime_.candidateIndex());
-    lv_label_set_text(candidates_label_, text.c_str());
+    set_candidates_label_text(candidates_label_, text.c_str());
 }
 
 void ImeWidget::on_toggle_clicked(lv_event_t* e)

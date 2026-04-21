@@ -193,10 +193,10 @@ Manifests are plain `key=value` files.
 
 ```ini
 kind=font
-id=zh-hans-cjk
-display_name=Simplified Chinese CJK
+id=zh-hans-core
+display_name=Simplified Chinese Core
 usage=both
-estimated_ram_bytes=476075
+estimated_ram_bytes=217456
 source=binfont
 file=font.bin
 ranges=ranges.txt
@@ -249,6 +249,20 @@ ime_pack=zh-hans-pinyin
 strings=strings.tsv
 ```
 
+Example with tiered Chinese coverage:
+
+```ini
+kind=locale
+id=zh-Hans
+display_name=Simplified Chinese
+native_name=简体中文
+ui_font_pack=zh-hans-core
+content_font_pack=zh-hans-core
+preferred_content_supplement_packs=zh-hans-ext
+ime_pack=zh-hans-pinyin
+strings=strings.tsv
+```
+
 Fields:
 
 - `id`
@@ -261,6 +275,8 @@ Fields:
   Font pack used for interface chrome in this locale.
 - `content_font_pack`
   Font pack preferred for content surfaces in this locale.
+- `preferred_content_supplement_packs`
+  Optional comma-separated list of content supplement font packs to try first when this locale encounters missing glyphs.
 - `ime_pack`
   Optional IME dependency.
 - `strings`

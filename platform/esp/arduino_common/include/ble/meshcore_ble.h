@@ -27,7 +27,7 @@ class MeshCoreBleService : public BleService,
     MeshCoreBleService(app::IAppBleFacade& ctx, const std::string& device_name);
     ~MeshCoreBleService() override;
 
-    void start() override;
+    bool start() override;
     void stop() override;
     void update() override;
 

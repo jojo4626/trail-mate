@@ -33,13 +33,21 @@ void GpsService::begin(GpsBoard& gps_board, MotionBoard& motion_board,
     gps_board_ = &gps_board;
     motion_board_ = &motion_board;
     gps_adapter_.begin(gps_board);
-    motion_adapter_.begin(motion_board);
 
     gps_disabled_ = (disable_hw_init & NO_HW_GPS) != 0;
     if (gps_disabled_)
     {
+        gps_ready_ = false;
         return;
     }
+    gps_ready_ = gps_adapter_.isReady();
+    if (!gps_ready_)
+    {
+        Serial.printf("[GPS] service inactive reason=adapter_not_ready\n");
+        return;
+    }
+
+    motion_adapter_.begin(motion_board);
 
     gps_data_mutex_ = xSemaphoreCreateMutex();
     if (gps_data_mutex_ == NULL)
@@ -184,7 +192,7 @@ void GpsService::setPowerStrategy(uint8_t strategy)
 {
     runtime_state_.setPowerStrategy(strategy);
 
-    if (gps_disabled_ || gps_board_ == nullptr)
+    if (!isEnabled() || gps_board_ == nullptr)
     {
         return;
     }
@@ -205,7 +213,7 @@ void GpsService::setTeamModeActive(bool active)
         return;
     }
 
-    if (gps_disabled_ || gps_board_ == nullptr)
+    if (!isEnabled() || gps_board_ == nullptr)
     {
         return;
     }
@@ -217,7 +225,7 @@ void GpsService::setGnssConfig(uint8_t mode, uint8_t sat_mask)
 {
     runtime_config_.setGnssConfig(mode, sat_mask);
 
-    if (gps_disabled_ || gps_board_ == nullptr)
+    if (!isEnabled() || gps_board_ == nullptr)
     {
         return;
     }
@@ -232,7 +240,7 @@ void GpsService::setNmeaConfig(uint8_t output_hz, uint8_t sentence_mask)
 {
     runtime_config_.setNmeaConfig(output_hz, sentence_mask);
 
-    if (gps_disabled_ || gps_board_ == nullptr)
+    if (!isEnabled() || gps_board_ == nullptr)
     {
         return;
     }
@@ -245,7 +253,7 @@ void GpsService::setNmeaConfig(uint8_t output_hz, uint8_t sentence_mask)
 
 void GpsService::setMotionConfig(const MotionConfig& config)
 {
-    if (gps_board_ == nullptr || gps_disabled_)
+    if (!isEnabled() || gps_board_ == nullptr)
     {
         return;
     }
@@ -283,7 +291,7 @@ void GpsService::applyGnssConfig()
     {
         return;
     }
-    if (gps_disabled_ || gps_board_ == nullptr)
+    if (!isEnabled() || gps_board_ == nullptr)
     {
         return;
     }
@@ -301,7 +309,7 @@ void GpsService::applyNmeaConfig()
     {
         return;
     }
-    if (gps_disabled_ || gps_board_ == nullptr)
+    if (!isEnabled() || gps_board_ == nullptr)
     {
         return;
     }

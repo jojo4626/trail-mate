@@ -97,7 +97,6 @@ static void set_btn_label_text(lv_obj_t* btn, const char* text)
     if (child && lv_obj_check_type(child, &lv_label_class))
     {
         ::ui::i18n::set_label_text(child, text);
-        ::ui::fonts::apply_localized_font(child, lv_label_get_text(child), ::ui::fonts::ui_chrome_font());
     }
 }
 
@@ -115,6 +114,17 @@ static void fit_btn_to_label(lv_obj_t* btn, int pad_lr)
     {
         lv_obj_set_width(btn, target_w);
     }
+}
+
+static void refresh_textarea_content_font(lv_obj_t* textarea)
+{
+    if (!textarea)
+    {
+        return;
+    }
+
+    const char* text = lv_textarea_get_text(textarea);
+    ::ui::fonts::apply_content_font(textarea, text ? text : "", ::ui::fonts::ui_chrome_font());
 }
 
 void ChatComposeScreen::setEnabled(bool enabled)
@@ -285,6 +295,7 @@ ChatComposeScreen::ChatComposeScreen(lv_obj_t* parent, chat::ConversationId conv
     lv_textarea_set_placeholder_text(impl_->w.textarea, "");
     lv_textarea_set_one_line(impl_->w.textarea, false);
     lv_textarea_set_max_length(impl_->w.textarea, kMaxInputBytes);
+    refresh_textarea_content_font(impl_->w.textarea);
 
     impl_->send_ctx.screen = this;
     impl_->send_ctx.intent = ActionIntent::Send;
@@ -427,6 +438,7 @@ void ChatComposeScreen::clearText()
     else
     {
         lv_textarea_set_text(impl_->w.textarea, "");
+        refresh_textarea_content_font(impl_->w.textarea);
     }
     refresh_len();
 }
@@ -567,6 +579,7 @@ void ChatComposeScreen::on_text_changed(lv_event_t* e)
     {
         return;
     }
+    refresh_textarea_content_font(screen->impl_->w.textarea);
     screen->refresh_len();
 }
 

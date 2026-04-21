@@ -799,13 +799,18 @@ const chat::meshcore::MeshCoreAdapter* MeshCoreBleService::meshCoreAdapter() con
     return static_cast<const chat::meshcore::MeshCoreAdapter*>(backend);
 }
 
-void MeshCoreBleService::start()
+bool MeshCoreBleService::start()
 {
     if (shared_core_)
     {
         shared_core_->reset();
     }
-    NimBLEDevice::setMTU(185);
+    if (!NimBLEDevice::setMTU(185))
+    {
+        Serial.printf("[BLE][meshcore] start failed reason=set_mtu mtu=%u\n", 185U);
+        stop();
+        return false;
+    }
     if (kMeshCoreBleSecurityEnabled)
     {
         refreshBlePin();
@@ -815,6 +820,12 @@ void MeshCoreBleService::start()
         NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
     }
     setupService();
+    if (!server_ || !service_ || !tx_char_ || !rx_char_)
+    {
+        Serial.printf("[BLE][meshcore] start failed reason=service_alloc\n");
+        stop();
+        return false;
+    }
     startAdvertising();
 
     multi_acks_ = ctx_.getConfig().meshcore_config.meshcore_multi_acks ? 1 : 0;
@@ -824,6 +835,7 @@ void MeshCoreBleService::start()
     {
         team->addIncomingDataObserver(this);
     }
+    return true;
 }
 
 void MeshCoreBleService::stop()
