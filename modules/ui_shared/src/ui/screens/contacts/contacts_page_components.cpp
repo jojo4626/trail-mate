@@ -48,6 +48,8 @@
 #define CONTACTS_LOG(...)
 #endif
 
+#define CONTACTS_NODE_INFO_LOG(...) std::printf("[Contacts][NodeInfo] " __VA_ARGS__)
+
 using namespace contacts::ui;
 namespace chat_support = chat::ui::support;
 
@@ -1136,8 +1138,14 @@ static void open_delete_confirm_modal()
 
 static void open_node_info_screen_for_node(uint32_t node_id)
 {
+    CONTACTS_NODE_INFO_LOG("open request node=%08lX existing_root=%p contacts_root=%p active=%p\n",
+                           static_cast<unsigned long>(node_id),
+                           g_contacts_state.node_info_root,
+                           g_contacts_state.root,
+                           lv_screen_active());
     if (g_contacts_state.node_info_root)
     {
+        CONTACTS_NODE_INFO_LOG("open ignored: node_info_root already exists\n");
         return;
     }
 
@@ -1148,19 +1156,39 @@ static void open_node_info_screen_for_node(uint32_t node_id)
     }
     if (!node)
     {
+        CONTACTS_NODE_INFO_LOG("open aborted: node not found\n");
         return;
     }
+
+    CONTACTS_NODE_INFO_LOG("resolved node=%08lX display='%s' long='%s' short='%s' pos_valid=%d\n",
+                           static_cast<unsigned long>(node->node_id),
+                           node->display_name.c_str(),
+                           node->long_name,
+                           node->short_name,
+                           node->position.valid ? 1 : 0);
 
     lv_obj_t* parent = g_contacts_state.root
                            ? lv_obj_get_parent(g_contacts_state.root)
                            : lv_screen_active();
     if (!parent)
     {
+        CONTACTS_NODE_INFO_LOG("open aborted: parent missing\n");
         return;
     }
+    lv_obj_update_layout(parent);
+    CONTACTS_NODE_INFO_LOG("parent=%p size=%dx%d hidden=%d\n",
+                           parent,
+                           static_cast<int>(lv_obj_get_width(parent)),
+                           static_cast<int>(lv_obj_get_height(parent)),
+                           lv_obj_has_flag(parent, LV_OBJ_FLAG_HIDDEN) ? 1 : 0);
 
     node_info::ui::NodeInfoWidgets widgets = node_info::ui::create(parent);
     g_contacts_state.node_info_root = widgets.root;
+    CONTACTS_NODE_INFO_LOG("node_info created root=%p header=%p content=%p back_btn=%p\n",
+                           widgets.root,
+                           widgets.header,
+                           widgets.content,
+                           widgets.back_btn);
 
     const chat::contacts::NodeInfo* info = node;
     if (g_contacts_state.contact_service)
@@ -1169,68 +1197,106 @@ static void open_node_info_screen_for_node(uint32_t node_id)
         if (latest)
         {
             info = latest;
+            CONTACTS_NODE_INFO_LOG("using latest contact_service snapshot node=%08lX pos_valid=%d\n",
+                                   static_cast<unsigned long>(latest->node_id),
+                                   latest->position.valid ? 1 : 0);
         }
     }
     node_info::ui::set_node_info(*info);
+    CONTACTS_NODE_INFO_LOG("set_node_info done root=%p hidden=%d size=%dx%d\n",
+                           widgets.root,
+                           widgets.root ? (lv_obj_has_flag(widgets.root, LV_OBJ_FLAG_HIDDEN) ? 1 : 0) : -1,
+                           widgets.root ? static_cast<int>(lv_obj_get_width(widgets.root)) : -1,
+                           widgets.root ? static_cast<int>(lv_obj_get_height(widgets.root)) : -1);
 
     if (!g_contacts_state.node_info_group)
     {
         g_contacts_state.node_info_group = lv_group_create();
+        CONTACTS_NODE_INFO_LOG("created node_info_group=%p\n", g_contacts_state.node_info_group);
     }
     lv_group_remove_all_objs(g_contacts_state.node_info_group);
     g_contacts_state.node_info_prev_group = lv_group_get_default();
     set_default_group(g_contacts_state.node_info_group);
+    CONTACTS_NODE_INFO_LOG("focus group switched prev=%p current=%p\n",
+                           g_contacts_state.node_info_prev_group,
+                           g_contacts_state.node_info_group);
 
     if (widgets.back_btn)
     {
         lv_group_add_obj(g_contacts_state.node_info_group, widgets.back_btn);
         lv_group_focus_obj(widgets.back_btn);
         lv_obj_add_event_cb(widgets.back_btn, on_node_info_back_clicked, LV_EVENT_CLICKED, nullptr);
+        CONTACTS_NODE_INFO_LOG("back button wired and focused back_btn=%p\n", widgets.back_btn);
+    }
+    if (widgets.layer_btn)
+    {
+        lv_group_add_obj(g_contacts_state.node_info_group, widgets.layer_btn);
+        CONTACTS_NODE_INFO_LOG("layer button added layer_btn=%p\n", widgets.layer_btn);
     }
 
     if (g_contacts_state.root)
     {
         lv_obj_add_flag(g_contacts_state.root, LV_OBJ_FLAG_HIDDEN);
+        CONTACTS_NODE_INFO_LOG("contacts root hidden root=%p hidden=%d\n",
+                               g_contacts_state.root,
+                               lv_obj_has_flag(g_contacts_state.root, LV_OBJ_FLAG_HIDDEN) ? 1 : 0);
     }
     if (g_contacts_state.refresh_timer)
     {
         lv_timer_pause(g_contacts_state.refresh_timer);
+        CONTACTS_NODE_INFO_LOG("refresh timer paused timer=%p\n", g_contacts_state.refresh_timer);
     }
+    CONTACTS_NODE_INFO_LOG("open complete\n");
 }
 
 static void close_node_info_screen()
 {
+    CONTACTS_NODE_INFO_LOG("close request root=%p group=%p prev_group=%p\n",
+                           g_contacts_state.node_info_root,
+                           g_contacts_state.node_info_group,
+                           g_contacts_state.node_info_prev_group);
     if (!g_contacts_state.node_info_root)
     {
+        CONTACTS_NODE_INFO_LOG("close ignored: no node_info_root\n");
         return;
     }
 
     node_info::ui::destroy();
     g_contacts_state.node_info_root = nullptr;
+    CONTACTS_NODE_INFO_LOG("node_info destroyed\n");
 
     if (g_contacts_state.node_info_group)
     {
         lv_group_remove_all_objs(g_contacts_state.node_info_group);
+        CONTACTS_NODE_INFO_LOG("node_info_group cleared group=%p\n", g_contacts_state.node_info_group);
     }
 
     lv_group_t* restore = contacts_input_get_group();
     if (restore)
     {
         set_default_group(restore);
+        CONTACTS_NODE_INFO_LOG("restored default group=%p\n", restore);
     }
     g_contacts_state.node_info_prev_group = nullptr;
 
     if (g_contacts_state.root)
     {
         lv_obj_clear_flag(g_contacts_state.root, LV_OBJ_FLAG_HIDDEN);
+        CONTACTS_NODE_INFO_LOG("contacts root shown root=%p hidden=%d\n",
+                               g_contacts_state.root,
+                               lv_obj_has_flag(g_contacts_state.root, LV_OBJ_FLAG_HIDDEN) ? 1 : 0);
     }
     if (g_contacts_state.refresh_timer)
     {
         lv_timer_resume(g_contacts_state.refresh_timer);
+        CONTACTS_NODE_INFO_LOG("refresh timer resumed timer=%p\n", g_contacts_state.refresh_timer);
     }
 
+    CONTACTS_NODE_INFO_LOG("close refresh_ui\n");
     refresh_ui();
+    CONTACTS_NODE_INFO_LOG("close contacts_focus_to_list\n");
     contacts_focus_to_list();
+    CONTACTS_NODE_INFO_LOG("close complete\n");
 }
 
 static void open_chat_compose()
@@ -1993,6 +2059,7 @@ static void on_del_cancel_clicked(lv_event_t* /*e*/)
 
 static void on_node_info_back_clicked(lv_event_t* /*e*/)
 {
+    CONTACTS_NODE_INFO_LOG("back button clicked\n");
     close_node_info_screen();
 }
 

@@ -11,18 +11,23 @@
 
 static LilyGoDispArduinoSPI* g_display_spi = nullptr;
 
-bool display_spi_lock(TickType_t xTicksToWait)
+namespace platform::esp::common
+{
+
+bool shared_spi_lock(TickType_t xTicksToWait)
 {
     return g_display_spi && g_display_spi->lock(xTicksToWait);
 }
 
-void display_spi_unlock()
+void shared_spi_unlock()
 {
     if (g_display_spi)
     {
         g_display_spi->unlock();
     }
 }
+
+} // namespace platform::esp::common
 
 bool LilyGoDispArduinoSPI::lock(TickType_t xTicksToWait)
 {

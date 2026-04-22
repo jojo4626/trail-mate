@@ -723,7 +723,7 @@ bool begin_ota_download(const ReleaseMetadata& metadata, std::string& out_error)
     mbedtls_sha256_context sha_ctx;
     unsigned char hash[32];
     mbedtls_sha256_init(&sha_ctx);
-    mbedtls_sha256_starts_ret(&sha_ctx, 0);
+    mbedtls_sha256_starts(&sha_ctx, 0);
 
     if (esp_http_client_open(client, 0) != ESP_OK)
     {
@@ -787,7 +787,7 @@ bool begin_ota_download(const ReleaseMetadata& metadata, std::string& out_error)
             goto cleanup;
         }
 
-        mbedtls_sha256_update_ret(&sha_ctx, buffer, static_cast<std::size_t>(read));
+        mbedtls_sha256_update(&sha_ctx, buffer, static_cast<std::size_t>(read));
         bytes_written += static_cast<std::size_t>(read);
 
         std::size_t progress_total = 0;
@@ -831,7 +831,7 @@ bool begin_ota_download(const ReleaseMetadata& metadata, std::string& out_error)
         goto cleanup;
     }
 
-    mbedtls_sha256_finish_ret(&sha_ctx, hash);
+    mbedtls_sha256_finish(&sha_ctx, hash);
     {
         char actual_sha256[65];
         for (int i = 0; i < 32; ++i)

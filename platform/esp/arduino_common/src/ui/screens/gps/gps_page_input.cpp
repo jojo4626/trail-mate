@@ -42,6 +42,11 @@ static bool show_pan_axis_controls()
     return !::ui::page_profile::current().large_touch_hitbox;
 }
 
+static int fmt_coord_i32(int32_t value)
+{
+    return static_cast<int>(value);
+}
+
 static bool is_pan_h_editing()
 {
     return g_gps_state.edit_mode == GpsEditMode::PanH;
@@ -226,8 +231,8 @@ static void handle_map_touch_press(const lv_point_t& point)
     {
         reset_map_touch_pan_state();
         GPS_FLOW_LOG("[GPS][MAP][touch] press_ignored x=%d y=%d hit=%d in_map=%d blocked=%d\n",
-                     point.x,
-                     point.y,
+                     fmt_coord_i32(point.x),
+                     fmt_coord_i32(point.y),
                      static_cast<int>(hit_id),
                      in_map ? 1 : 0,
                      blocked ? 1 : 0);
@@ -242,8 +247,8 @@ static void handle_map_touch_press(const lv_point_t& point)
     g_gps_state.touch_pan.start_pan_x = g_gps_state.pan_x;
     g_gps_state.touch_pan.start_pan_y = g_gps_state.pan_y;
     GPS_FLOW_LOG("[GPS][MAP][touch] press x=%d y=%d pan=%d,%d target=%d\n",
-                 point.x,
-                 point.y,
+                 fmt_coord_i32(point.x),
+                 fmt_coord_i32(point.y),
                  g_gps_state.pan_x,
                  g_gps_state.pan_y,
                  static_cast<int>(hit_id));
@@ -321,8 +326,8 @@ static void handle_map_touch_release(lv_indev_t* indev, const lv_point_t& point)
         lv_indev_stop_processing(indev);
     }
     GPS_FLOW_LOG("[GPS][MAP][touch] release x=%d y=%d dragging=%d pan=%d,%d\n",
-                 point.x,
-                 point.y,
+                 fmt_coord_i32(point.x),
+                 fmt_coord_i32(point.y),
                  g_gps_state.touch_pan.dragging ? 1 : 0,
                  g_gps_state.pan_x,
                  g_gps_state.pan_y);
@@ -497,9 +502,9 @@ static bool try_handle_pan_edit_key(lv_obj_t* target, lv_key_t key, lv_event_t* 
                  input_model,
                  target_id,
                  key,
-                 step,
-                 before_x,
-                 before_y,
+                 fmt_coord_i32(step),
+                 fmt_coord_i32(before_x),
+                 fmt_coord_i32(before_y),
                  g_gps_state.pan_x,
                  g_gps_state.pan_y);
     return true;

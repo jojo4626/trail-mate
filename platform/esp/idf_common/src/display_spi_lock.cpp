@@ -1,9 +1,14 @@
-#include "display/DisplayInterface.h"
+#include "platform/esp/common/shared_spi_lock.h"
 
-bool display_spi_lock(TickType_t xTicksToWait)
+namespace platform::esp::common
+{
+
+bool shared_spi_lock(TickType_t xTicksToWait)
 {
     (void)xTicksToWait;
     return true;
 }
 
-void display_spi_unlock() {}
+void shared_spi_unlock() {}
+
+} // namespace platform::esp::common

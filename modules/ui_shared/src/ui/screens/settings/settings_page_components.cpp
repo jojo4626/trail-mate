@@ -42,11 +42,19 @@
 #include "ui/widgets/system_notification.h"
 #include "ui/widgets/top_bar.h"
 
+#if defined(ESP_PLATFORM)
+#include "esp_log.h"
+#endif
+
 namespace settings::ui::components
 {
 
 namespace
 {
+
+#if defined(ESP_PLATFORM)
+constexpr const char* kLogTag = "settings-page";
+#endif
 
 namespace device_runtime = ::platform::ui::device;
 namespace firmware_update_runtime = ::platform::ui::firmware_update;
@@ -794,6 +802,9 @@ static void perform_factory_reset()
 
 static void settings_load()
 {
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "settings_load begin");
+#endif
     app::IAppFacade& app_ctx = app::appFacade();
     g_settings.chat_protocol = static_cast<int>(app_ctx.getConfig().mesh_protocol);
 
@@ -1036,6 +1047,14 @@ static void settings_load()
         snprintf(g_settings.gauge_full_mah, sizeof(g_settings.gauge_full_mah), "%lu",
                  static_cast<unsigned long>(f));
     }
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag,
+             "settings_load complete locales=%u tx_power_options=%u wifi_supported=%d wifi_networks=%u",
+             static_cast<unsigned>(kLocaleOptionCount),
+             static_cast<unsigned>(kTxPowerOptionCount),
+             wifi_runtime::is_supported() ? 1 : 0,
+             static_cast<unsigned>(kWifiNetworkOptionCount));
+#endif
 }
 
 static void format_value(const settings::ui::SettingItem& item, char* out, size_t out_len)
@@ -2863,12 +2882,23 @@ static void build_item_list()
         return;
     }
     s_building_list = true;
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag,
+             "build_item_list begin category=%d",
+             g_state.current_category);
+#endif
     g_state.list_back_btn = nullptr;
     lv_obj_clean(g_state.list_panel);
     g_state.item_count = 0;
     lv_obj_clear_flag(g_state.list_panel, LV_OBJ_FLAG_SCROLLABLE);
 
     const CategoryDef& cat = kCategories[g_state.current_category];
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag,
+             "build_item_list category_label=%s item_count=%u",
+             cat.label ? cat.label : "<null>",
+             static_cast<unsigned>(cat.item_count));
+#endif
     for (size_t i = 0; i < cat.item_count && g_state.item_count < kMaxItems; ++i)
     {
         settings::ui::ItemWidget& widget = g_state.item_widgets[g_state.item_count];
@@ -2898,9 +2928,22 @@ static void build_item_list()
         }
         if (!should_show_item(*widget.def))
         {
+#if defined(ESP_PLATFORM)
+            ESP_LOGI(kLogTag,
+                     "build_item_list skip index=%u key=%s",
+                     static_cast<unsigned>(i),
+                     widget.def->pref_key ? widget.def->pref_key : "<none>");
+#endif
             continue;
         }
 
+#if defined(ESP_PLATFORM)
+        ESP_LOGI(kLogTag,
+                 "build_item_list item index=%u key=%s type=%d",
+                 static_cast<unsigned>(i),
+                 widget.def->pref_key ? widget.def->pref_key : "<none>",
+                 static_cast<int>(widget.def->type));
+#endif
         lv_obj_t* btn = lv_btn_create(g_state.list_panel);
         configure_list_item_button(btn);
         style::apply_list_item(btn);
@@ -2937,6 +2980,12 @@ static void build_item_list()
     lv_obj_add_flag(g_state.list_panel, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scrollbar_mode(g_state.list_panel, LV_SCROLLBAR_MODE_AUTO);
     s_building_list = false;
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag,
+             "build_item_list complete visible_items=%u has_back=%d",
+             static_cast<unsigned>(g_state.item_count),
+             g_state.list_back_btn ? 1 : 0);
+#endif
 }
 
 static bool activate_item_widget(settings::ui::ItemWidget& widget)
@@ -3242,6 +3291,9 @@ static void settings_back_cb(void* /*user_data*/)
 
 void create(lv_obj_t* parent)
 {
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "create begin");
+#endif
     settings_load();
 
     // Avoid auto-adding widgets to the current default group during creation.
@@ -3249,16 +3301,42 @@ void create(lv_obj_t* parent)
     set_default_group(nullptr);
 
     g_state.parent = parent;
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "create root");
+#endif
     g_state.root = layout::create_root(parent);
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "create header");
+#endif
     layout::create_header(g_state.root, settings_back_cb, nullptr);
 
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "create content");
+#endif
     g_state.content = layout::create_content(g_state.root);
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "create filter panel");
+#endif
     layout::create_filter_panel(g_state.content);
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "create list panel");
+#endif
     layout::create_list_panel(g_state.content);
 
     g_state.filter_count = sizeof(kCategories) / sizeof(kCategories[0]);
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag,
+             "create filter buttons count=%u",
+             static_cast<unsigned>(g_state.filter_count));
+#endif
     for (size_t i = 0; i < g_state.filter_count; ++i)
     {
+#if defined(ESP_PLATFORM)
+        ESP_LOGI(kLogTag,
+                 "create filter button index=%u label=%s",
+                 static_cast<unsigned>(i),
+                 kCategories[i].label ? kCategories[i].label : "<null>");
+#endif
         lv_obj_t* btn = lv_btn_create(g_state.filter_panel);
         lv_obj_set_size(btn, LV_PCT(100), ::ui::page_profile::current().filter_button_height);
         style::apply_btn_filter(btn);
@@ -3274,8 +3352,17 @@ void create(lv_obj_t* parent)
         g_state.filter_buttons[i] = btn;
     }
 
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "create update_filter_styles");
+#endif
     update_filter_styles();
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "create build_item_list");
+#endif
     build_item_list();
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "create sync_firmware_update_ui");
+#endif
     sync_firmware_update_ui(false);
     if (s_firmware_update_timer)
     {
@@ -3295,7 +3382,13 @@ void create(lv_obj_t* parent)
 
     // Restore previous default group before initializing input.
     set_default_group(prev_group);
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "create input init");
+#endif
     settings::ui::input::init();
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "create complete");
+#endif
 }
 
 void destroy()

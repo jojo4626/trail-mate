@@ -4,7 +4,9 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "platform/esp/arduino_common/app_tasks.h"
 #include "platform/esp/arduino_common/gps/gps_service_api.h"
+#include "platform/esp/common/shared_spi_lock.h"
 #include "platform/ui/device_runtime.h"
 #include "screen_sleep.h"
 #include "team/usecase/team_pairing_service.h"
@@ -28,6 +30,9 @@ namespace
 Status s_status{};
 char s_message[96] = "";
 bool s_prepared = false;
+bool s_radio_tasks_paused_by_usb = false;
+
+#define USB_MSC_LOG(...) std::printf("[USBMSC] " __VA_ARGS__)
 
 void set_status_message(const char* message)
 {
@@ -51,6 +56,15 @@ bool s_backend_started = false;
 int32_t usbReadCallback(uint32_t lba, uint32_t offset, void* buffer, uint32_t bufsize)
 {
     (void)offset;
+    ::platform::esp::common::SharedSpiLockGuard spi_guard{};
+    if (!spi_guard.locked())
+    {
+        USB_MSC_LOG("read lock failed lba=%lu size=%lu\n",
+                    static_cast<unsigned long>(lba),
+                    static_cast<unsigned long>(bufsize));
+        return -1;
+    }
+
     const uint32_t sec_size = SD.sectorSize();
     if (sec_size == 0)
     {
@@ -71,6 +85,15 @@ int32_t usbReadCallback(uint32_t lba, uint32_t offset, void* buffer, uint32_t bu
 int32_t usbWriteCallback(uint32_t lba, uint32_t offset, uint8_t* buffer, uint32_t bufsize)
 {
     (void)offset;
+    ::platform::esp::common::SharedSpiLockGuard spi_guard{};
+    if (!spi_guard.locked())
+    {
+        USB_MSC_LOG("write lock failed lba=%lu size=%lu\n",
+                    static_cast<unsigned long>(lba),
+                    static_cast<unsigned long>(bufsize));
+        return -1;
+    }
+
     uint64_t free_space = SD.totalBytes() - SD.usedBytes();
     if (bufsize > free_space)
     {
@@ -212,6 +235,13 @@ void prepare_mass_storage_mode()
     esp_wifi_stop();
     disableScreenSleep();
 
+    if (!app::AppTasks::areRadioTasksPaused())
+    {
+        app::AppTasks::pauseRadioTasks();
+        s_radio_tasks_paused_by_usb = true;
+        USB_MSC_LOG("radio tasks paused for USB mass storage\n");
+    }
+
     TaskHandle_t gps_task_handle = gps::gps_get_task_handle();
     if (gps_task_handle != nullptr)
     {
@@ -227,6 +257,13 @@ void restore_mass_storage_mode()
     if (gps_task_handle != nullptr)
     {
         vTaskResume(gps_task_handle);
+    }
+
+    if (s_radio_tasks_paused_by_usb)
+    {
+        app::AppTasks::resumeRadioTasks();
+        s_radio_tasks_paused_by_usb = false;
+        USB_MSC_LOG("radio tasks resumed after USB mass storage\n");
     }
 }
 

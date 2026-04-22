@@ -1,9 +1,17 @@
 #include "ui/components/two_pane_styles.h"
 
+#if defined(ESP_PLATFORM)
+#include "esp_log.h"
+#endif
+
 namespace ui::components::two_pane_styles
 {
 namespace
 {
+
+#if defined(ESP_PLATFORM)
+constexpr const char* kLogTag = "two-pane-style";
+#endif
 
 bool s_inited = false;
 
@@ -28,6 +36,10 @@ void init_once()
 {
     if (s_inited) return;
     s_inited = true;
+
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "init_once");
+#endif
 
     lv_style_init(&s_panel_side);
     lv_style_set_bg_opa(&s_panel_side, LV_OPA_COVER);

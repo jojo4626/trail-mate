@@ -92,6 +92,7 @@ set(trail_mate_idf_ui_shared_sources
     ${CMAKE_SOURCE_DIR}/modules/ui_shared/src/ui/widgets/top_bar.cpp
     ${CMAKE_SOURCE_DIR}/modules/ui_shared/src/ui/widgets/busy_overlay.cpp
     ${CMAKE_SOURCE_DIR}/modules/ui_shared/src/ui/widgets/system_notification.cpp
+    ${CMAKE_SOURCE_DIR}/modules/ui_shared/src/ui/widgets/map/map_viewport.cpp
     ${CMAKE_SOURCE_DIR}/modules/ui_shared/src/ui/widgets/toast/toast_widget.cpp
     ${CMAKE_SOURCE_DIR}/modules/ui_shared/src/ui/widgets/ime/ime_widget.cpp
     ${CMAKE_SOURCE_DIR}/modules/ui_shared/src/ui/widgets/ime/pinyin_ime.cpp

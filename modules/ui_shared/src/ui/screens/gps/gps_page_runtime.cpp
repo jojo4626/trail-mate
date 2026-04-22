@@ -320,8 +320,8 @@ static void gps_initial_tiles_async(void* /*user_data*/)
                  g_gps_state.has_fix,
                  sanitize_map_source(app::configFacade().getConfig().map_source),
                  app::configFacade().getConfig().map_contour_enabled,
-                 lv_obj_get_width(g_gps_state.map),
-                 lv_obj_get_height(g_gps_state.map),
+                 static_cast<int>(lv_obj_get_width(g_gps_state.map)),
+                 static_cast<int>(lv_obj_get_height(g_gps_state.map)),
                  g_gps_state.lat,
                  g_gps_state.lng);
     update_map_tiles(false);

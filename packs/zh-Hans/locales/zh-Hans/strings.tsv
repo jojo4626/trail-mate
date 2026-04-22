@@ -546,3 +546,7 @@ queue full	队列已满
 unsupported protocol	协议不支持
 Factory Reset	恢复出厂设置
 Clear all settings and restart?	清空全部设置并重启?
+Terrain	地形图
+Satellite	卫星图
+Contour: ON	等高线:开
+Contour data missing	缺少等高线数据

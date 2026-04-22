@@ -1,40 +1,46 @@
-# Locale, Font, and IME Packs
+# Locale、Font 与 IME Pack
 
-## Goals
+本文档解释 pack 机制与打包细节。
+整个本地化系统的规范性规格现在位于
+[`docs/LOCALIZATION_SPEC.md`](./LOCALIZATION_SPEC.md)。
+如果两份文档之间存在冲突，以 `LOCALIZATION_SPEC.md` 为准。
 
-The pack system exists to solve four problems at the same time:
+## 目标
 
-1. Keep the firmware image minimal. English stays built in, large script assets move to SD.
-2. Keep `installed` separate from `loaded`. A pack being present on SD must not mean its font is already in RAM.
-3. Let mixed-language content render correctly. A Spanish UI still needs to show a Chinese contact name if that font pack is installed.
-4. Bound RAM usage across very different devices, including no-PSRAM targets.
+pack 系统同时为了解决四个问题而存在：
 
-This is now a first-class runtime architecture, not a collection of text-based bypasses.
+1. 让固件镜像保持尽可能小。English 保持内建，大体积脚本资源移出固件镜像，进入外部 pack 存储。
+2. 明确区分 `installed` 与 `loaded`。一个 pack 出现在 Flash 或 SD 上，并不意味着它的字体已经加载进 RAM。
+3. 让混合语言内容正确渲染。即使 UI 是西班牙语，只要对应字体 pack 已安装，系统仍应能显示中文联系人名。
+4. 给 RAM 使用量设定边界，适配差异很大的设备，包括无 PSRAM 目标。
 
-## Core Model
+这已经是一套一等公民的运行时架构，而不是若干基于文本的旁路拼接。
 
-Trail Mate treats localization as three explicit pack types:
+## 核心模型
+
+Trail Mate 把本地化明确建模为三类 pack：
 
 - `Locale Pack`
-  Owns translated UI strings and declares which UI font pack, content font pack, and optional IME pack it needs.
+  拥有翻译后的 UI 字符串，并声明它依赖的 UI font pack、content font pack，以及可选的 IME pack。
 - `Font Pack`
-  Owns glyph coverage metadata plus the external `font.bin` asset.
+  拥有字形覆盖元数据以及外部 `font.bin` 资源。
 - `IME Pack`
-  Declares script-specific input behavior such as Pinyin.
+  声明脚本特定的输入行为，例如拼音。
 
-The Settings page selects a `Locale Pack`. It does not directly choose a font or IME.
+Settings 页选择的是 `Locale Pack`，而不是直接选择字体或 IME。
 
-## Built-In vs External
+## 内建与外部
 
-The firmware intentionally ships with the smallest built-in baseline:
+固件有意只携带最小内建基线：
 
-- built-in locale packs: `en`
-- built-in font packs: `builtin-latin-ui`
-- built-in IME packs: none
+- 内建 locale pack：`en`
+- 内建 font pack：`builtin-latin-ui`
+- 内建 IME pack：无
 
-English is therefore always available, even when the SD card has no language packs at all.
+因此，即使没有任何外部语言包存在，English 也始终可用。
 
-External packs are discovered from the SD card under:
+运行时 payload 可以从外部 pack 根目录中被发现，例如 SD，或者设备上的 Flash 安装存储。
+具体运行时根目录由当前固件实现定义；已安装布局保持为：
 
 ```text
 /trailmate/packs/fonts/<font-pack-id>/manifest.ini
@@ -42,30 +48,29 @@ External packs are discovered from the SD card under:
 /trailmate/packs/ime/<ime-pack-id>/manifest.ini
 ```
 
-At boot the registry is built in two phases:
+启动时，registry 分两阶段建立：
 
-1. Catalog every built-in pack and every external pack manifest.
-2. Resolve dependencies and decide which locales are allowed on the current memory profile.
+1. 编目所有内建 pack 以及所有外部 pack manifest。
+2. 解析依赖，并根据当前 memory profile 决定哪些 locale 被允许使用。
 
-Important: manifest discovery is cheap. External fonts are not loaded into RAM during cataloging.
+重要说明：发现 manifest 的成本很低。编目阶段不会把外部字体加载进 RAM。
 
-## Three Layouts
+## 三种布局
 
-The same localization asset now exists in three different representations, and keeping them
-separate is intentional:
+同一份本地化资源现在同时存在三种表示形式，刻意把它们分开是设计要求的一部分：
 
-### Repository Source Bundle
+### 仓库源码 Bundle
 
-What lives under `packs/<bundle-id>/` in Git.
+Git 中 `packs/<bundle-id>/` 下的内容。
 
-- contains runtime manifests
-- contains human-facing package metadata
-- contains build-only files such as `charset.txt` and `build.ini`
-- may omit tracked `font.bin`, because the Pages build can regenerate it
+- 包含运行时 manifest
+- 包含面向人的 package 元数据
+- 包含仅构建期使用的文件，例如 `charset.txt` 与 `build.ini`
+- 可能不跟踪 `font.bin`，因为 Pages 构建可以重新生成它
 
-### Installed Runtime Layout
+### 已安装运行时布局
 
-What the firmware actually scans on SD:
+固件真正扫描的已安装运行时布局：
 
 ```text
 /trailmate/packs/fonts/<font-pack-id>/...
@@ -73,55 +78,53 @@ What the firmware actually scans on SD:
 /trailmate/packs/ime/<ime-pack-id>/...
 ```
 
-This is the only layout the runtime registry understands.
+这是运行时 registry 唯一理解的布局。
 
-### Distribution Package
+### 分发包
 
-What the website and future Extensions page should traffic in:
+网站以及未来 Extensions 页面应该分发和消费的对象：
 
-- one zip per installable bundle
-- one package manifest with version and compatibility metadata
-- one description file for UI presentation
-- one remote catalog entry for discovery and update checks
+- 每个可安装 bundle 一个 zip
+- 一个带版本与兼容性元数据的 package manifest
+- 一个用于 UI 展示的描述文件
+- 一个用于发现与更新检查的远程 catalog 条目
 
-The runtime does not scan zip files directly. The package manager layer downloads a zip,
-unpacks its payload into the installed runtime layout, then asks the runtime registry to
-refresh.
+运行时不会直接扫描 zip。package manager 层负责下载 zip，把其中 payload 解开到已安装运行时布局，然后要求运行时 registry 刷新。
 
-## Installed Is Not Loaded
+## Installed 不等于 Loaded
 
-This distinction is the center of the design.
+这是整个设计的中心区分。
 
 - `Installed`
-  The manifest exists on SD and the registry knows the pack exists.
+  manifest 存在于 SD 上，registry 知道这个 pack 存在。
 - `Loaded`
-  The external `font.bin` has actually been passed to `lv_binfont_create()` and now consumes runtime RAM.
+  外部 `font.bin` 已经真正传给 `lv_binfont_create()`，现在开始消耗运行时 RAM。
 
-The runtime behaves like this:
+运行时的行为如下：
 
-1. The active locale is resolved from `settings/display_locale`.
-2. The active UI font pack is loaded immediately when that locale is activated.
-3. The active content font pack is loaded lazily, only when content-scope text needs it.
-4. Additional content supplement packs are loaded lazily if the current text contains codepoints not covered by the active content chain.
-5. Changing locale unloads all runtime-loaded external fonts and rebuilds the chains from scratch.
+1. 从 `settings/display_locale` 解析当前活动 locale。
+2. 当该 locale 被激活时，立即加载活动 UI font pack。
+3. 活动 content font pack 采用惰性加载，只在 content-scope 文本真正需要时才加载。
+4. 如果当前文本包含活动 content chain 尚未覆盖的 codepoint，则惰性加载额外的 content supplement pack。
+5. 切换 locale 时，会卸载所有运行时已加载的外部字体，并从头重建整条链。
 
-That means a device can have many packs installed while only one or two are resident in RAM.
+这意味着，一个设备可以安装很多 pack，但任意时刻真正驻留在 RAM 中的只会有一到两个。
 
-## UI Scope vs Content Scope
+## UI Scope 与 Content Scope
 
-The runtime keeps two different fallback chains on purpose.
+运行时有意维持两条不同的 fallback chain。
 
 ### UI Chain
 
-Used for static application chrome:
+用于静态应用 chrome：
 
-- menu labels
-- settings labels
-- headings
-- buttons
-- other translated interface text
+- 菜单标签
+- 设置页标签
+- 标题
+- 按钮
+- 其他翻译后的界面文本
 
-The chain is:
+链路如下：
 
 ```text
 screen-selected Latin base font -> active UI font pack
@@ -129,16 +132,16 @@ screen-selected Latin base font -> active UI font pack
 
 ### Content Chain
 
-Used for user-generated or externally received text:
+用于用户生成或外部接收的文本：
 
-- chat sender lines
-- chat message previews and bodies
-- contact names
-- team member names
-- node names and descriptions
-- locale display names shown in the selector
+- 聊天发送者行
+- 聊天预览与正文
+- 联系人名
+- 队伍成员名
+- 节点名与描述
+- 选择器中显示的 locale 名称
 
-The chain is:
+链路如下：
 
 ```text
 screen-selected Latin base font
@@ -147,47 +150,47 @@ screen-selected Latin base font
 -> lazily loaded content supplement packs
 ```
 
-This is what lets a non-Chinese UI still render Chinese content when the corresponding pack is installed.
+这就是为什么在非中文 UI 下，只要安装了相应 pack，系统仍然能正确显示中文内容。
 
-## Memory Profiles
+## Memory Profile
 
-Pack availability is constrained by a board-specific memory profile in shared runtime code.
+pack 的可用性由共享运行时代码中的 board-specific memory profile 约束。
 
-Current profiles:
+当前 profile 如下：
 
 - `constrained`
-  Locale font budget `128 KiB`, content supplements disabled, decoded map cache `2` tiles, cache not retained on page exit.
+  locale 字体预算 `128 KiB`，禁用 content supplement，解码后的地图 cache 为 `2` 张 tile，页面退出后不保留 cache。
 - `standard`
-  Locale font budget `768 KiB`, content supplement budget `640 KiB`, at most `1` supplement pack, decoded map cache `4` tiles, cache not retained.
+  locale 字体预算 `768 KiB`，content supplement 预算 `640 KiB`，最多 `1` 个 supplement pack，解码后的地图 cache 为 `4` 张 tile，页面退出后不保留 cache。
 - `extended`
-  Locale font budget `2 MiB`, content supplement budget `2 MiB`, at most `3` supplement packs, decoded map cache `12` tiles, cache retained on page exit.
+  locale 字体预算 `2 MiB`，content supplement 预算 `2 MiB`，最多 `3` 个 supplement pack，解码后的地图 cache 为 `12` 张 tile，页面退出后保留 cache。
 
-Current board mapping:
+当前板级映射：
 
-- `extended`: `Tab5`, `T-Display P4`
-- `standard`: `T-Deck`, `T-Deck Pro`
-- `constrained`: everything else, including no-PSRAM and pager-class targets
+- `extended`：`Tab5`、`T-Display P4`
+- `standard`：`T-Deck`、`T-Deck Pro`
+- `constrained`：其余所有设备，包括无 PSRAM 和 pager 级目标
 
-The locale budget is checked against the actual active locale cost:
+locale 预算会基于当前活动 locale 的真实成本进行检查：
 
 ```text
 unique(UI font pack, content font pack)
 ```
 
-The supplement budget is separate and only applies to extra content packs that are pulled in later for mixed-script content.
+supplement 预算与之分离，只作用于后续为混合脚本内容额外拉入的 content pack。
 
-## Persistence
+## 持久化
 
-The active locale is stored as:
+活动 locale 存储为：
 
-- namespace: `settings`
-- key: `display_locale`
+- namespace：`settings`
+- key：`display_locale`
 
-Legacy ESP installs using the old integer `display_language` key are migrated once to the new string key. After migration, the legacy key is removed.
+旧版 ESP 安装使用的整型 `display_language` key，会被一次性迁移到新的字符串 key。迁移完成后，旧 key 会被移除。
 
 ## Manifest Schema
 
-Manifests are plain `key=value` files.
+manifest 使用普通的 `key=value` 文件格式。
 
 ### Font Pack Manifest
 
@@ -202,24 +205,24 @@ file=font.bin
 ranges=ranges.txt
 ```
 
-Fields:
+字段说明：
 
 - `id`
-  Stable pack identifier.
+  稳定的 pack 标识符。
 - `display_name`
-  Human-readable name used for diagnostics.
+  用于诊断的人类可读名称。
 - `usage`
-  One of `ui`, `content`, or `both`.
+  取值为 `ui`、`content` 或 `both`。
 - `estimated_ram_bytes`
-  Expected runtime RAM cost after loading with LVGL binfont loader. This is used for profile decisions and supplement planning.
+  使用 LVGL binfont loader 加载后的预期运行时 RAM 成本。该值用于 profile 决策与 supplement 规划。
 - `source`
-  Currently `binfont` for external files, or `builtin` for an alias to a compiled font pack.
+  当前外部文件使用 `binfont`，编译进固件的字体别名使用 `builtin`。
 - `file`
-  Path to `font.bin`, relative to the pack directory.
+  `font.bin` 的相对路径，相对于该 pack 目录。
 - `ranges`
-  Coverage metadata file, relative to the pack directory. This is used for codepoint planning, not for rendering.
+  覆盖元数据文件的相对路径，相对于该 pack 目录。它用于 codepoint 规划，而不是直接用于渲染。
 
-If `estimated_ram_bytes` is missing or `0`, the runtime treats the pack as having unknown cost and cannot budget it accurately. Repository packs should always provide it.
+如果 `estimated_ram_bytes` 缺失或为 `0`，运行时会把该 pack 视为“成本未知”，因而无法准确做预算。仓库中的 pack 应始终提供此字段。
 
 ### IME Pack Manifest
 
@@ -230,11 +233,11 @@ display_name=Pinyin
 backend=builtin-pinyin
 ```
 
-Today the shipped backend implementation is:
+目前已出货的 backend 实现是：
 
 - `builtin-pinyin`
 
-The backend lives in firmware code. The IME pack manifest is the runtime registration layer that exposes it.
+backend 的真实实现位于固件代码中。IME pack manifest 是把它注册进运行时并暴露出来的那一层。
 
 ### Locale Pack Manifest
 
@@ -249,7 +252,7 @@ ime_pack=zh-hans-pinyin
 strings=strings.tsv
 ```
 
-Example with tiered Chinese coverage:
+一个带分层中文覆盖的示例：
 
 ```ini
 kind=locale
@@ -263,68 +266,68 @@ ime_pack=zh-hans-pinyin
 strings=strings.tsv
 ```
 
-Fields:
+字段说明：
 
 - `id`
-  Locale identifier shown in persistence and logs.
+  用于持久化和日志的 locale 标识符。
 - `display_name`
-  English-facing name.
+  面向英文语境的名称。
 - `native_name`
-  Native self-name shown in the selector.
+  在选择器中显示的本语言自称。
 - `ui_font_pack`
-  Font pack used for interface chrome in this locale.
+  该 locale 用于界面 chrome 的 font pack。
 - `content_font_pack`
-  Font pack preferred for content surfaces in this locale.
+  该 locale 在内容表面优先使用的 font pack。
 - `preferred_content_supplement_packs`
-  Optional comma-separated list of content supplement font packs to try first when this locale encounters missing glyphs.
+  可选的逗号分隔 content supplement font pack 列表；当这个 locale 遇到缺字时，优先尝试它们。
 - `ime_pack`
-  Optional IME dependency.
+  可选 IME 依赖。
 - `strings`
-  Path to the locale TSV file, relative to the pack directory.
+  locale TSV 文件的相对路径，相对于该 pack 目录。
 
-If `content_font_pack` is omitted, it defaults to `ui_font_pack`.
-If `ui_font_pack` is omitted, it defaults to `builtin-latin-ui`.
+如果省略 `content_font_pack`，默认回退为 `ui_font_pack`。
+如果省略 `ui_font_pack`，默认回退为 `builtin-latin-ui`。
 
-## String Table Format
+## String Table 格式
 
-Locale strings are stored as TSV:
+locale 字符串以 TSV 存储：
 
 ```text
 English source string<TAB>Localized string
 ```
 
-Supported escapes:
+支持的转义包括：
 
 - `\\n`
 - `\\t`
 - `\\r`
 - `\\\\`
 
-Example:
+示例：
 
 ```text
 Settings	Paramètres
 Send this code and compare:\\n	Envoyez ce code et comparez:\\n
 ```
 
-The English source string remains the stable lookup key in code.
+代码中的稳定查找 key 始终是 English 源字符串。
 
-## Failure Behavior
+## 失败行为
 
-If a locale pack cannot be used:
+如果某个 locale pack 无法被使用：
 
-- missing font pack dependency: locale is skipped
-- missing IME dependency: locale is skipped
-- active locale font cost exceeds the current memory profile: locale is skipped
-- persisted locale id no longer resolves: runtime falls back to `en`
+- 缺少依赖的 font pack：跳过该 locale
+- 缺少依赖的 IME pack：跳过该 locale
+- 活动 locale 的字体成本超出当前 memory profile：跳过该 locale
+- 持久化的 locale id 不再能解析：运行时回退到 `en`
 
-The persisted `display_locale` value is not erased just because a removable pack is absent. If the pack returns later, the locale becomes selectable again.
+不会仅仅因为可移除 pack 当前缺席，就把持久化的 `display_locale` 值擦掉。如果该 pack 之后重新出现，这个 locale 会再次变得可选。
 
-If a content supplement cannot be loaded, the UI still stays alive. That specific text may render as missing glyphs, but the active locale remains unchanged.
+如果某个 content supplement 无法加载，UI 仍然要继续存活。只有那段具体文本可能显示为缺字，但活动 locale 不会因此改变。
 
-## Repository Bundles
+## 仓库 Bundle
 
-The repository ships source bundles under:
+仓库当前提供的源码 bundle 位于：
 
 - `packs/europe-latin-ext`
 - `packs/zh-Hans`
@@ -332,24 +335,22 @@ The repository ships source bundles under:
 - `packs/ja`
 - `packs/ko`
 
-Each source bundle contains:
+每个源码 bundle 包含：
 
 - `package.ini`
 - `DESCRIPTION.txt`
-- generation notes in `README.md`
-- runtime payload trees under `fonts/`, `locales/`, and optional `ime/`
-- `build.ini` plus `charset.txt` in each external font-pack directory
-- `ranges.txt` for runtime coverage planning
+- `README.md` 中的生成说明
+- 位于 `fonts/`、`locales/` 与可选 `ime/` 下的运行时 payload 树
+- 每个外部 font-pack 目录中的 `build.ini` 与 `charset.txt`
+- 供运行时覆盖规划使用的 `ranges.txt`
 
-`font.bin` is intentionally not part of the source-of-truth layout. If it already exists
-locally, it will be used. If it is absent, the Pages pack build regenerates it from the
-bundled `charset.txt` and `build.ini` metadata before producing the zip archive.
+`font.bin` 有意不作为 source-of-truth 布局的一部分。如果本地已经存在，就直接使用；如果缺失，Pages pack 构建会在生成 zip 之前，基于 bundle 内的 `charset.txt` 与 `build.ini` 元数据重新生成它。
 
 ## Package Manifest
 
-Every source bundle now carries a bundle-level `package.ini`.
+每个源码 bundle 现在都带有 bundle-level 的 `package.ini`。
 
-Example:
+示例：
 
 ```ini
 kind=package
@@ -367,38 +368,38 @@ supported_memory_profiles=standard,extended
 tags=language,cjk,chinese,ime
 ```
 
-Fields:
+字段说明：
 
 - `id`
-  Stable package identifier used by the remote catalog and future installed-index file.
+  稳定 package 标识符，供远程 catalog 与未来的 installed-index 文件使用。
 - `package_type`
-  High-level package role. Today repository bundles use `locale-bundle`.
+  高层级 package 角色。当前仓库 bundle 使用 `locale-bundle`。
 - `version`
-  Package version, independent from the firmware tag.
+  package 版本号，独立于固件 tag。
 - `display_name`
-  Human-facing package name for the Extensions UI.
+  Extensions UI 中给用户看的 package 名称。
 - `summary`
-  Short one-line description for list views.
+  用于列表视图的一行简述。
 - `description`
-  Plain-text description file relative to the bundle root.
+  相对于 bundle 根目录的纯文本描述文件。
 - `readme`
-  Developer-facing documentation file relative to the bundle root.
+  相对于 bundle 根目录的面向开发者文档文件。
 - `author`
-  Package publisher string.
+  package 发布者字符串。
 - `homepage`
-  Project or package home page.
+  项目或 package 首页。
 - `min_firmware_version`
-  Minimum firmware version expected to understand the bundle contract correctly.
+  正确理解该 bundle 契约所要求的最小固件版本。
 - `supported_memory_profiles`
-  Declared compatibility hint for `constrained`, `standard`, and/or `extended` devices.
+  声明式兼容性提示，可取 `constrained`、`standard` 与/或 `extended`。
 - `tags`
-  Search and grouping metadata for a future Extensions browser.
+  供未来 Extensions 浏览器搜索与分组的元数据。
 
-## Font Build Metadata
+## Font 构建元数据
 
-Each external font-pack directory may also declare a `build.ini` used only by tooling.
+每个外部 font-pack 目录还可以声明一个仅供工具链使用的 `build.ini`。
 
-Example:
+示例：
 
 ```ini
 font=tools/fonts/NotoSansCJKsc-Regular.otf
@@ -407,28 +408,28 @@ bpp=2
 no_compress=true
 ```
 
-Fields:
+字段说明：
 
 - `font`
-  Source font file in the repository.
+  仓库中的源字体文件。
 - `size`
-  Pixel size passed to the binfont generator.
+  传给 binfont generator 的像素尺寸。
 - `bpp`
-  Bits-per-pixel for the generated font.
+  生成字体的 bits-per-pixel。
 - `no_compress`
-  Whether the generated `font.bin` should disable lv_font_conv RLE compression.
+  是否让生成的 `font.bin` 禁用 lv_font_conv 的 RLE 压缩。
 
-This file is build metadata only. The runtime never reads it.
+这个文件只属于构建期元数据。运行时永远不会读取它。
 
-## Distribution Archive Layout
+## 分发 Archive 布局
 
-The GitHub Pages build now produces one zip per bundle under:
+GitHub Pages 构建现在会在以下路径下为每个 bundle 生成一个 zip：
 
 ```text
 site/assets/packs/<package-id>-<version>.zip
 ```
 
-Each archive contains:
+每个 archive 包含：
 
 ```text
 package.ini
@@ -439,81 +440,78 @@ payload/locales/<locale-id>/...
 payload/ime/<ime-pack-id>/...
 ```
 
-Inside `payload/`, only installable runtime files are included. Build-only files such as
-`charset.txt`, `build.ini`, and `.gitignore` are excluded from the archive.
+`payload/` 内只包含可安装的运行时文件。像 `charset.txt`、`build.ini` 和 `.gitignore` 这类仅构建期文件都会被排除在 archive 之外。
 
-## Remote Catalog
+## 远程 Catalog
 
-The Pages build also produces:
+Pages 构建还会生成：
 
 ```text
 site/data/packs.json
 ```
 
-This catalog is the discovery surface for a future Extensions UI. Each entry contains:
+这个 catalog 是未来 Extensions UI 的发现面。每个条目包含：
 
-- package id, version, display name, summary, and long description
-- compatibility hints such as `min_firmware_version` and supported memory profiles
-- the list of locale/font/IME records provided by the bundle
-- archive path, size, and SHA-256 for download and update checks
-- estimated runtime font RAM totals for planning before install
+- package id、version、display name、summary 和长描述
+- `min_firmware_version`、supported memory profiles 之类的兼容性提示
+- bundle 提供的 locale/font/IME 记录列表
+- 用于下载与更新检查的 archive 路径、大小和 SHA-256
+- 用于安装前规划的预计运行时字体 RAM 总量
 
-The catalog intentionally sits above the runtime registry. It describes downloadable bundles,
-not currently loaded fonts.
+这个 catalog 被有意设计在 runtime registry 之上。它描述的是“可下载 bundle”，而不是“当前已经加载的字体”。
 
-## Installed Package Index
+## 已安装 Package 索引
 
-The runtime registry still catalogs installed unpacked resources directly from `/trailmate/packs`.
-For package management, the corresponding installer layer should additionally maintain:
+runtime registry 仍然直接从 `/trailmate/packs` 对已解包资源进行编目。
+对于 package 管理，对应的 installer 层还应额外维护：
 
 ```text
 /trailmate/packs/.index/installed.json
 ```
 
-That file is expected to record:
+该文件应记录：
 
-- installed package id
-- installed package version
-- install time
-- source archive SHA-256
+- 已安装的 package id
+- 已安装的 package version
+- 安装时间
+- 来源 archive 的 SHA-256
 
-Future update prompts should compare this installed index against `site/data/packs.json`
-instead of guessing based on directory names.
+未来的更新提示应把这个 installed index 与 `site/data/packs.json` 对比，而不是靠目录名猜测。
 
-## Current IME Coverage
+## 当前 IME 覆盖
 
-Today only Simplified Chinese declares an IME pack in the repository bundle:
+目前仓库 bundle 中，只有简体中文声明了 IME pack：
 
 - `zh-Hans` -> `zh-hans-pinyin`
 
-Traditional Chinese, Japanese, and Korean bundles are display-only for now. They intentionally keep input on the existing `EN` / `123` path until dedicated IME packs exist.
+繁体中文、日文和韩文 bundle 目前都是 display-only。它们有意继续沿用现有 `EN` / `123` 输入路径，直到对应脚本的专用 IME pack 出现。
 
-## Adding A New Language
+## 新增一种语言
 
-1. Decide whether the locale can reuse an existing font pack or needs a new one.
-2. Add a source bundle `packs/<bundle-id>/` with `package.ini`, `DESCRIPTION.txt`, and `README.md`.
-3. Generate `charset.txt` and `ranges.txt` for each external font pack in that bundle.
-4. Write `build.ini` for each generated font pack.
-5. Write the runtime font manifest with `usage`, `estimated_ram_bytes`, and `ranges`.
-6. Write the locale pack manifest with `ui_font_pack` and `content_font_pack`.
-7. Add `ime_pack` only if the script truly needs extra input behavior.
-8. Run `python scripts/build_pack_repository.py --pack-root packs --site-root site`.
-9. Either install manually by copying the runtime payload to SD, or ship the generated zip through Pages for the future Extensions installer.
-10. Reboot and select the locale from Settings.
+1. 先决定这个 locale 能否复用已有 font pack，还是需要新建一个。
+2. 新增源码 bundle：`packs/<bundle-id>/`，并写好 `package.ini`、`DESCRIPTION.txt` 与 `README.md`。
+3. 为该 bundle 中的每个外部 font pack 生成 `charset.txt` 与 `ranges.txt`。
+4. 为每个生成型 font pack 写好 `build.ini`。
+5. 写运行时 font manifest，包括 `usage`、`estimated_ram_bytes` 和 `ranges`。
+6. 写 locale pack manifest，包括 `ui_font_pack` 与 `content_font_pack`。
+7. 只有在该脚本确实需要额外输入行为时，才添加 `ime_pack`。
+8. 运行 `python scripts/build_pack_repository.py --pack-root packs --site-root site`。
+9. 可以手工把 runtime payload 拷贝到 SD 安装，也可以通过 Pages 产出的 zip 提供给未来的 Extensions installer。
+10. 重启后，在 Settings 中选择该 locale。
 
-## Design Rules
+## 设计规则
 
-This architecture intentionally avoids:
+这套架构有意避免以下做法：
 
-- integer language enums
-- eager loading of every installed font at boot
-- a single global "non-ASCII => swap font" shortcut
-- conflating UI chrome text with user content text
-- per-platform localization implementations drifting apart
-- mixing runtime manifests with package-distribution metadata
-- forcing the runtime registry to understand remote catalogs or zip archives
+- 使用整数语言枚举
+- 开机时急切加载所有已安装字体
+- 用一个全局的“只要非 ASCII 就切换字体”快捷规则
+- 把 UI chrome 文本与用户内容文本混为一谈
+- 让不同平台上的本地化实现逐渐漂离
+- 混淆运行时 manifest 与 package 分发元数据
+- 让 runtime registry 去理解远程 catalog 或 zip archive
 
-The dependency graph stays explicit:
+依赖图保持显式：
 
 ```text
 Locale Pack -> UI Font Pack
@@ -522,4 +520,4 @@ Locale Pack -> IME Pack
 Content text -> Optional supplement font packs
 ```
 
-That makes the code easier to reason about and gives Trail Mate a path to broader language support without forcing every device to pay the same firmware and RAM cost.
+这样既让代码更容易推理，也让 Trail Mate 在不强迫所有设备承担同样固件体积与 RAM 成本的前提下，拥有扩展到更广泛语言支持的路径。

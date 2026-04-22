@@ -7,10 +7,18 @@
 #include "ui/components/info_card.h"
 #include "ui/components/two_pane_styles.h"
 
+#if defined(ESP_PLATFORM)
+#include "esp_log.h"
+#endif
+
 namespace settings::ui::style
 {
 namespace
 {
+
+#if defined(ESP_PLATFORM)
+constexpr const char* kLogTag = "settings-style";
+#endif
 
 bool s_inited = false;
 lv_style_t s_modal_bg;
@@ -25,6 +33,10 @@ void init_once()
     ::ui::components::two_pane_styles::init_once();
     if (s_inited) return;
     s_inited = true;
+
+#if defined(ESP_PLATFORM)
+    ESP_LOGI(kLogTag, "init_once");
+#endif
 
     lv_style_init(&s_modal_bg);
     lv_style_set_bg_opa(&s_modal_bg, LV_OPA_COVER);

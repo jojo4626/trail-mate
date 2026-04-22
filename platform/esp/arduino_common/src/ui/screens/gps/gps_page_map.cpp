@@ -19,6 +19,7 @@
 #include "ui/screens/team/team_ui_store.h"
 #include "ui/ui_common.h"
 #include "ui/widgets/map/map_tiles.h"
+#include "ui/widgets/map/map_viewport.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -87,82 +88,19 @@ static double approx_distance_m(double lat1, double lng1, double lat2, double ln
     return sqrt(x * x + y * y) * kEarthRadiusM;
 }
 
-namespace
-{
-constexpr double kCoordPi = 3.14159265358979323846;
-constexpr double kCoordA = 6378245.0;
-constexpr double kCoordEe = 0.00669342162296594323;
-
-bool coord_out_of_china(double lat, double lon)
-{
-    return (lon < 72.004 || lon > 137.8347 || lat < 0.8293 || lat > 55.8271);
-}
-
-double coord_transform_lat(double x, double y)
-{
-    double ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y +
-                 0.2 * std::sqrt(std::fabs(x));
-    ret += (20.0 * std::sin(6.0 * x * kCoordPi) + 20.0 * std::sin(2.0 * x * kCoordPi)) * 2.0 / 3.0;
-    ret += (20.0 * std::sin(y * kCoordPi) + 40.0 * std::sin(y / 3.0 * kCoordPi)) * 2.0 / 3.0;
-    ret += (160.0 * std::sin(y / 12.0 * kCoordPi) + 320 * std::sin(y * kCoordPi / 30.0)) * 2.0 / 3.0;
-    return ret;
-}
-
-double coord_transform_lon(double x, double y)
-{
-    double ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y +
-                 0.1 * std::sqrt(std::fabs(x));
-    ret += (20.0 * std::sin(6.0 * x * kCoordPi) + 20.0 * std::sin(2.0 * x * kCoordPi)) * 2.0 / 3.0;
-    ret += (20.0 * std::sin(x * kCoordPi) + 40.0 * std::sin(x / 3.0 * kCoordPi)) * 2.0 / 3.0;
-    ret += (150.0 * std::sin(x / 12.0 * kCoordPi) + 300.0 * std::sin(x / 30.0 * kCoordPi)) * 2.0 / 3.0;
-    return ret;
-}
-
-void wgs84_to_gcj02(double lat, double lon, double& out_lat, double& out_lon)
-{
-    if (coord_out_of_china(lat, lon))
-    {
-        out_lat = lat;
-        out_lon = lon;
-        return;
-    }
-    double dlat = coord_transform_lat(lon - 105.0, lat - 35.0);
-    double dlon = coord_transform_lon(lon - 105.0, lat - 35.0);
-    double radlat = lat / 180.0 * kCoordPi;
-    double magic = std::sin(radlat);
-    magic = 1 - kCoordEe * magic * magic;
-    double sqrt_magic = std::sqrt(magic);
-    dlat = (dlat * 180.0) / ((kCoordA * (1 - kCoordEe)) / (magic * sqrt_magic) * kCoordPi);
-    dlon = (dlon * 180.0) / (kCoordA / sqrt_magic * std::cos(radlat) * kCoordPi);
-    out_lat = lat + dlat;
-    out_lon = lon + dlon;
-}
-
-void gcj02_to_bd09(double lat, double lon, double& out_lat, double& out_lon)
-{
-    double z = std::sqrt(lon * lon + lat * lat) + 0.00002 * std::sin(lat * kCoordPi);
-    double theta = std::atan2(lat, lon) + 0.000003 * std::cos(lon * kCoordPi);
-    out_lon = z * std::cos(theta) + 0.0065;
-    out_lat = z * std::sin(theta) + 0.006;
-}
-} // namespace
-
 void gps_map_transform(double lat, double lon, double& out_lat, double& out_lon)
 {
-    uint8_t coord_system = app::configFacade().getConfig().map_coord_system;
-    if (coord_system == 1)
+    ::ui::widgets::map::GeoPoint input{true, lat, lon};
+    ::ui::widgets::map::GeoPoint output{};
+    if (::ui::widgets::map::transform_geo_point(
+            input, app::configFacade().getConfig().map_coord_system, output) &&
+        output.valid)
     {
-        wgs84_to_gcj02(lat, lon, out_lat, out_lon);
+        out_lat = output.lat;
+        out_lon = output.lon;
         return;
     }
-    if (coord_system == 2)
-    {
-        double gcj_lat = 0.0;
-        double gcj_lon = 0.0;
-        wgs84_to_gcj02(lat, lon, gcj_lat, gcj_lon);
-        gcj02_to_bd09(gcj_lat, gcj_lon, out_lat, out_lon);
-        return;
-    }
+
     out_lat = lat;
     out_lon = lon;
 }

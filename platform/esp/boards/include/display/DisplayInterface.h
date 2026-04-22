@@ -2,6 +2,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "platform/esp/common/shared_spi_lock.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -162,6 +163,3 @@ class LilyGoDispArduinoSPI
     void unlock();
 };
 #endif
-
-bool display_spi_lock(TickType_t xTicksToWait = portMAX_DELAY);
-void display_spi_unlock();

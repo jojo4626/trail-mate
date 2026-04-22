@@ -5,9 +5,15 @@
 
 #include "chat/infra/reticulum/reticulum_wire.h"
 
+#if defined(ESP_PLATFORM)
+#include "mbedtls/aes.h"
+#include "mbedtls/md.h"
+#include "mbedtls/sha256.h"
+#else
 #include <AES.h>
 #include <Crypto.h>
 #include <SHA256.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -28,12 +34,34 @@ constexpr uint8_t kHeaderType2 = 0x01;
 class Aes256CbcCipher
 {
   public:
+    Aes256CbcCipher()
+    {
+#if defined(ESP_PLATFORM)
+        mbedtls_aes_init(&encrypt_);
+        mbedtls_aes_init(&decrypt_);
+#endif
+    }
+
+    ~Aes256CbcCipher()
+    {
+#if defined(ESP_PLATFORM)
+        mbedtls_aes_free(&encrypt_);
+        mbedtls_aes_free(&decrypt_);
+#endif
+    }
+
     void setKey(const uint8_t* key, size_t len)
     {
         valid_ = (key != nullptr && len == 32);
         if (valid_)
         {
+#if defined(ESP_PLATFORM)
+            valid_ =
+                mbedtls_aes_setkey_enc(&encrypt_, key, static_cast<unsigned>(len * 8U)) == 0 &&
+                mbedtls_aes_setkey_dec(&decrypt_, key, static_cast<unsigned>(len * 8U)) == 0;
+#else
             aes_.setKey(key, len);
+#endif
         }
     }
 
@@ -48,7 +76,14 @@ class Aes256CbcCipher
         {
             return;
         }
+#if defined(ESP_PLATFORM)
+        if (valid_)
+        {
+            (void)mbedtls_aes_crypt_ecb(&encrypt_, MBEDTLS_AES_ENCRYPT, in, out);
+        }
+#else
         aes_.encryptBlock(out, in);
+#endif
     }
 
     void decryptBlock(uint8_t* out, const uint8_t* in)
@@ -57,11 +92,23 @@ class Aes256CbcCipher
         {
             return;
         }
+#if defined(ESP_PLATFORM)
+        if (valid_)
+        {
+            (void)mbedtls_aes_crypt_ecb(&decrypt_, MBEDTLS_AES_DECRYPT, in, out);
+        }
+#else
         aes_.decryptBlock(out, in);
+#endif
     }
 
   private:
+#if defined(ESP_PLATFORM)
+    mbedtls_aes_context encrypt_{};
+    mbedtls_aes_context decrypt_{};
+#else
     AESSmall256 aes_;
+#endif
     bool valid_ = false;
 };
 
@@ -74,6 +121,16 @@ void hmacSha256(const uint8_t* key, size_t key_len,
         return;
     }
 
+#if defined(ESP_PLATFORM)
+    static constexpr uint8_t kEmpty = 0;
+    const uint8_t* input = (data && data_len != 0) ? data : &kEmpty;
+    const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    if (!info ||
+        mbedtls_md_hmac(info, key, key_len, input, data_len, out_hash) != 0)
+    {
+        memset(out_hash, 0, kFullHashSize);
+    }
+#else
     SHA256 sha;
     sha.resetHMAC(key, key_len);
     if (data && data_len != 0)
@@ -81,6 +138,7 @@ void hmacSha256(const uint8_t* key, size_t key_len,
         sha.update(data, data_len);
     }
     sha.finalizeHMAC(key, key_len, out_hash, kFullHashSize);
+#endif
 }
 
 void xorBlock(uint8_t* dst, const uint8_t* src)
@@ -251,12 +309,23 @@ void fullHash(const uint8_t* data, size_t len, uint8_t out_hash[kFullHashSize])
         return;
     }
 
+#if defined(ESP_PLATFORM)
+    static constexpr uint8_t kEmpty = 0;
+    const uint8_t* input = (data && len != 0) ? data : &kEmpty;
+    mbedtls_sha256_context sha;
+    mbedtls_sha256_init(&sha);
+    mbedtls_sha256_starts(&sha, 0);
+    mbedtls_sha256_update(&sha, input, len);
+    mbedtls_sha256_finish(&sha, out_hash);
+    mbedtls_sha256_free(&sha);
+#else
     SHA256 sha;
     if (data && len != 0)
     {
         sha.update(data, len);
     }
     sha.finalize(out_hash, kFullHashSize);
+#endif
 }
 
 void truncatedHash(const uint8_t* data, size_t len, uint8_t out_hash[kTruncatedHashSize])

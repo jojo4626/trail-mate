@@ -13,15 +13,16 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include "display/DisplayInterface.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "platform/esp/common/shared_spi_lock.h"
 #include "platform/esp/idf_common/bsp_runtime.h"
 #include "platform/esp/idf_common/tab5_codec_compat.h"
 #include "sys/clock.h"
 #else
 #include "boards/tlora_pager/tlora_pager_board.h"
+#include "platform/esp/common/shared_spi_lock.h"
 #include <SD.h>
 #endif
 
@@ -312,25 +313,6 @@ int64_t s_no_pixel_samples = 0;
 int64_t s_log_samples = 0;
 bool s_last_in_progress = false;
 
-struct SdSpiGuard
-{
-    bool locked = false;
-    explicit SdSpiGuard(bool enable = true, TickType_t wait = portMAX_DELAY)
-    {
-        if (enable)
-        {
-            locked = display_spi_lock(wait);
-        }
-    }
-    ~SdSpiGuard()
-    {
-        if (locked)
-        {
-            display_spi_unlock();
-        }
-    }
-};
-
 void set_error(const char* msg)
 {
     if (!msg)
@@ -479,7 +461,7 @@ bool save_frame_to_sd()
         set_error("No frame");
         return false;
     }
-    SdSpiGuard guard;
+    ::platform::esp::common::SharedSpiLockGuard guard;
     if (SD.cardType() == CARD_NONE)
     {
         set_error("SD not ready");

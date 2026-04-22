@@ -28,7 +28,7 @@
 #ifdef INADDR_NONE
 #undef INADDR_NONE
 #endif
-#include "rom/miniz.h"
+#include <rom/miniz.h>
 
 #define UI_PACKS_HAVE_CRT_BUNDLE 1
 
@@ -1271,9 +1271,9 @@ std::string sha256_hex_of_bytes(const std::uint8_t* data, std::size_t len)
     unsigned char hash[32];
     mbedtls_sha256_context ctx;
     mbedtls_sha256_init(&ctx);
-    mbedtls_sha256_starts_ret(&ctx, 0);
-    mbedtls_sha256_update_ret(&ctx, data, len);
-    mbedtls_sha256_finish_ret(&ctx, hash);
+    mbedtls_sha256_starts(&ctx, 0);
+    mbedtls_sha256_update(&ctx, data, len);
+    mbedtls_sha256_finish(&ctx, hash);
     mbedtls_sha256_free(&ctx);
 
     char hex[65];

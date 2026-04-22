@@ -4,9 +4,9 @@
  */
 
 #include "ui/widgets/map/map_tiles.h"
-#include "display/DisplayInterface.h"
 #include "freertos/FreeRTOS.h"
 #include "lvgl.h"
+#include "platform/esp/common/shared_spi_lock.h"
 #include "src/draw/lv_image_decoder_private.h"
 #include "src/misc/cache/instance/lv_image_cache.h"
 #include "sys/clock.h"
@@ -14,6 +14,7 @@
 #include "ui/runtime/memory_profile.h"
 #include "ui/screens/gps/gps_constants.h"
 #include "ui/support/lvgl_fs_utils.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -56,6 +57,13 @@ static bool use_non_touch_placeholder_cards()
     return !::ui::page_profile::current().large_touch_hitbox;
 }
 
+static int fmt_tile_coord(int32_t value)
+{
+    // Tile coordinates are bounded by the zoom-domain we support, so narrowing
+    // them for debug/UI formatting is intentional and safe.
+    return static_cast<int>(value);
+}
+
 static void create_placeholder_tile_card(lv_obj_t* parent, MapTile& tile, int screen_x, int screen_y)
 {
     tile.img_obj = lv_obj_create(parent);
@@ -66,7 +74,12 @@ static void create_placeholder_tile_card(lv_obj_t* parent, MapTile& tile, int sc
 
     lv_obj_t* placeholder_label = lv_label_create(tile.img_obj);
     char placeholder_text[48];
-    snprintf(placeholder_text, sizeof(placeholder_text), "z=%d\nx=%d\ny=%d", tile.z, tile.x, tile.y);
+    snprintf(placeholder_text,
+             sizeof(placeholder_text),
+             "z=%d\nx=%d\ny=%d",
+             tile.z,
+             fmt_tile_coord(tile.x),
+             fmt_tile_coord(tile.y));
     lv_label_set_text(placeholder_label, placeholder_text);
     style_placeholder_text(placeholder_label);
     lv_obj_center(placeholder_label);
@@ -223,27 +236,6 @@ const char* major_contour_profile_for_zoom(int z)
     return "major-25";
 }
 
-class SpiLockGuard
-{
-  public:
-    explicit SpiLockGuard(TickType_t wait_ticks)
-        : locked_(display_spi_lock(wait_ticks))
-    {
-    }
-
-    ~SpiLockGuard()
-    {
-        if (locked_)
-        {
-            display_spi_unlock();
-        }
-    }
-
-    bool locked() const { return locked_; }
-
-  private:
-    bool locked_;
-};
 } // namespace
 
 uint8_t sanitize_map_source(uint8_t map_source)
@@ -481,9 +473,9 @@ static DecodedTileCache* get_lru_cache_slot(size_t active_limit)
     if (g_tile_decode_cache[lru_idx].img_dsc != NULL)
     {
         GPS_LOG("[GPS] Evicting cached tile %d/%d/%d from decode cache\n",
-                g_tile_decode_cache[lru_idx].z,
-                g_tile_decode_cache[lru_idx].x,
-                g_tile_decode_cache[lru_idx].y);
+                fmt_tile_coord(g_tile_decode_cache[lru_idx].z),
+                fmt_tile_coord(g_tile_decode_cache[lru_idx].x),
+                fmt_tile_coord(g_tile_decode_cache[lru_idx].y));
         // Free the image descriptor (data was allocated by us)
         if (g_tile_decode_cache[lru_idx].img_dsc->data != NULL)
         {
@@ -910,15 +902,20 @@ static void load_tile_image(TileContext& ctx, MapTile& tile)
     if (tile.img_obj != NULL && tile.has_png_file)
     {
         tile.last_used_ms = sys::millis_now();
-        GPS_LOG("[GPS] load_tile_image: Tile %d/%d/%d already loaded\n", tile.z, tile.x, tile.y);
+        GPS_LOG("[GPS] load_tile_image: Tile %d/%d/%d already loaded\n",
+                tile.z,
+                fmt_tile_coord(tile.x),
+                fmt_tile_coord(tile.y));
         return;
     }
 
-    SpiLockGuard spi_lock(pdMS_TO_TICKS(20));
+    ::platform::esp::common::SharedSpiLockGuard spi_lock(pdMS_TO_TICKS(20));
     if (!spi_lock.locked())
     {
         GPS_LOG("[GPS] load_tile_image: SPI lock busy, deferring tile %d/%d/%d\n",
-                tile.z, tile.x, tile.y);
+                tile.z,
+                fmt_tile_coord(tile.x),
+                fmt_tile_coord(tile.y));
         tile.last_used_ms = sys::millis_now();
         return;
     }
@@ -928,7 +925,11 @@ static void load_tile_image(TileContext& ctx, MapTile& tile)
 
     bool file_exists = false;
 
-    GPS_LOG("[GPS] load_tile_image: Loading tile %d/%d/%d, path=%s\n", tile.z, tile.x, tile.y, path);
+    GPS_LOG("[GPS] load_tile_image: Loading tile %d/%d/%d, path=%s\n",
+            tile.z,
+            fmt_tile_coord(tile.x),
+            fmt_tile_coord(tile.y),
+            path);
 
     // Always recalculate screen position (don't use old placeholder position)
     // This ensures correct position after panning/zooming
@@ -971,7 +972,9 @@ static void load_tile_image(TileContext& ctx, MapTile& tile)
             if (cache_slot == NULL)
             {
                 GPS_LOG("[GPS] Cache full (all slots in use), deferring tile %d/%d/%d\n",
-                        tile.z, tile.x, tile.y);
+                        tile.z,
+                        fmt_tile_coord(tile.x),
+                        fmt_tile_coord(tile.y));
                 tile.last_used_ms = sys::millis_now();
                 return;
             }
@@ -1000,7 +1003,10 @@ static void load_tile_image(TileContext& ctx, MapTile& tile)
         if (cached && cached->img_dsc != NULL)
         {
             // Use cached decoded image (no PNG decode needed)
-            GPS_LOG("[GPS] Using cached decoded image for tile %d/%d/%d\n", tile.z, tile.x, tile.y);
+            GPS_LOG("[GPS] Using cached decoded image for tile %d/%d/%d\n",
+                    tile.z,
+                    fmt_tile_coord(tile.x),
+                    fmt_tile_coord(tile.y));
             lv_image_set_src(tile.img_obj, cached->img_dsc);
             cached->in_use = true;
             cached->last_used_ms = sys::millis_now();
@@ -1009,7 +1015,10 @@ static void load_tile_image(TileContext& ctx, MapTile& tile)
         else
         {
             // Decode PNG and cache it in RAM
-            GPS_LOG("[GPS] Decoding and caching tile %d/%d/%d\n", tile.z, tile.x, tile.y);
+            GPS_LOG("[GPS] Decoding and caching tile %d/%d/%d\n",
+                    tile.z,
+                    fmt_tile_coord(tile.x),
+                    fmt_tile_coord(tile.y));
 
             // Use LVGL's decoder to decode PNG
             lv_image_decoder_dsc_t decoder_dsc;
@@ -1029,7 +1038,14 @@ static void load_tile_image(TileContext& ctx, MapTile& tile)
                 uint32_t data_size = decoded_buf->data_size;
 
                 GPS_LOG("[GPS] Decoded tile %d/%d/%d: %dx%d, cf=%d, stride=%d, size=%d\n",
-                        tile.z, tile.x, tile.y, width, height, cf, stride, data_size);
+                        tile.z,
+                        fmt_tile_coord(tile.x),
+                        fmt_tile_coord(tile.y),
+                        width,
+                        height,
+                        cf,
+                        stride,
+                        data_size);
 
                 // Allocate image descriptor (cache_slot->img_dsc should be NULL after eviction)
                 cache_slot->img_dsc = (lv_image_dsc_t*)lv_malloc(sizeof(lv_image_dsc_t));
@@ -1084,7 +1100,10 @@ static void load_tile_image(TileContext& ctx, MapTile& tile)
 
                         // Use cached decoded image
                         lv_image_set_src(tile.img_obj, cache_slot->img_dsc);
-                        GPS_LOG("[GPS] Tile %d/%d/%d decoded and cached successfully\n", tile.z, tile.x, tile.y);
+                        GPS_LOG("[GPS] Tile %d/%d/%d decoded and cached successfully\n",
+                                tile.z,
+                                fmt_tile_coord(tile.x),
+                                fmt_tile_coord(tile.y));
                     }
                 }
             }
@@ -1093,10 +1112,13 @@ static void load_tile_image(TileContext& ctx, MapTile& tile)
                 // Decode failed - fall back to file path
                 GPS_FLOW_LOG("[GPS][MAP][fallback] decode_path_fallback z=%d x=%d y=%d src=%u\n",
                              tile.z,
-                             tile.x,
-                             tile.y,
+                             fmt_tile_coord(tile.x),
+                             fmt_tile_coord(tile.y),
                              g_active_map_source);
-                GPS_LOG("[GPS] WARNING: Failed to decode tile %d/%d/%d, using file path\n", tile.z, tile.x, tile.y);
+                GPS_LOG("[GPS] WARNING: Failed to decode tile %d/%d/%d, using file path\n",
+                        tile.z,
+                        fmt_tile_coord(tile.x),
+                        fmt_tile_coord(tile.y));
                 lv_image_decoder_close(&decoder_dsc);
 
                 // Create cache entry placeholder (will be decoded later if possible)
@@ -1117,12 +1139,18 @@ static void load_tile_image(TileContext& ctx, MapTile& tile)
         tile.contour_checked = false;
         tile.contour_loaded = false;
         *ctx.has_map_data = true; // Global flag - any tile ever loaded
-        GPS_LOG("[GPS] Tile %d/%d/%d image loaded successfully\n", tile.z, tile.x, tile.y);
+        GPS_LOG("[GPS] Tile %d/%d/%d image loaded successfully\n",
+                tile.z,
+                fmt_tile_coord(tile.x),
+                fmt_tile_coord(tile.y));
     }
     else
     {
         // File missing: use unified placeholder card
-        GPS_LOG("[GPS] Creating placeholder card for missing tile %d/%d/%d\n", tile.z, tile.x, tile.y);
+        GPS_LOG("[GPS] Creating placeholder card for missing tile %d/%d/%d\n",
+                tile.z,
+                fmt_tile_coord(tile.x),
+                fmt_tile_coord(tile.y));
         if (tile.img_obj != NULL)
         {
             lv_obj_del(tile.img_obj);
@@ -1132,8 +1160,8 @@ static void load_tile_image(TileContext& ctx, MapTile& tile)
         tile.base_missing = true;
         GPS_FLOW_LOG("[GPS][MAP][fallback] base_missing_confirmed z=%d x=%d y=%d src=%u res=%d path=%s\n",
                      tile.z,
-                     tile.x,
-                     tile.y,
+                     fmt_tile_coord(tile.x),
+                     fmt_tile_coord(tile.y),
                      g_active_map_source,
                      res,
                      path);
@@ -1144,13 +1172,20 @@ static void load_tile_image(TileContext& ctx, MapTile& tile)
             g_missing_tile_notice_pending = true;
             g_missing_tile_notice_source = g_active_map_source;
         }
-        GPS_LOG("[GPS] Created placeholder card for tile %d/%d/%d\n", tile.z, tile.x, tile.y);
+        GPS_LOG("[GPS] Created placeholder card for tile %d/%d/%d\n",
+                tile.z,
+                fmt_tile_coord(tile.x),
+                fmt_tile_coord(tile.y));
     }
 
     tile.last_used_ms = sys::millis_now();
     tile.obj_evicted_ms = 0;
     tile.record_evicted = false;
-    GPS_LOG("[GPS] Tile %d/%d/%d loaded, visible=%d\n", tile.z, tile.x, tile.y, tile.visible);
+    GPS_LOG("[GPS] Tile %d/%d/%d loaded, visible=%d\n",
+            tile.z,
+            fmt_tile_coord(tile.x),
+            fmt_tile_coord(tile.y),
+            tile.visible);
 }
 
 static void load_contour_overlay(MapTile& tile)
@@ -1824,8 +1859,8 @@ void tile_loader_step(TileContext& ctx)
                                 before_visible_unloaded);
         GPS_FLOW_LOG("[GPS][MAP][loader] pick z=%d x=%d y=%d prio=%d vis=%d loaded=%d placeholder=%d unloaded=%d\n",
                      best->z,
-                     best->x,
-                     best->y,
+                     fmt_tile_coord(best->x),
+                     fmt_tile_coord(best->y),
                      best->priority,
                      before_visible_total,
                      before_visible_loaded,
@@ -1854,8 +1889,8 @@ void tile_loader_step(TileContext& ctx)
                                 after_visible_unloaded);
         GPS_FLOW_LOG("[GPS][MAP][loader] done z=%d x=%d y=%d file=%d obj=%d vis=%d loaded=%d placeholder=%d unloaded=%d\n",
                      best->z,
-                     best->x,
-                     best->y,
+                     fmt_tile_coord(best->x),
+                     fmt_tile_coord(best->y),
                      best->has_png_file,
                      best->img_obj != NULL,
                      after_visible_total,

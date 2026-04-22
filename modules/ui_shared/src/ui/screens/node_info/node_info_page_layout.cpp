@@ -77,8 +77,9 @@ lv_obj_t* create_root(lv_obj_t* parent)
 
 lv_obj_t* create_header(lv_obj_t* root)
 {
+    const lv_coord_t root_w = resolve_parent_width(root);
     lv_obj_t* header = lv_obj_create(root);
-    lv_obj_set_size(header, lv_obj_get_width(root), top_bar_height());
+    lv_obj_set_size(header, root_w, top_bar_height());
     lv_obj_set_pos(header, 0, 0);
     make_plain(header);
     return header;
@@ -86,9 +87,11 @@ lv_obj_t* create_header(lv_obj_t* root)
 
 lv_obj_t* create_content(lv_obj_t* root)
 {
+    const lv_coord_t root_w = resolve_parent_width(root);
+    const lv_coord_t root_h = resolve_parent_height(root);
     const lv_coord_t header_h = top_bar_height();
     lv_obj_t* content = lv_obj_create(root);
-    lv_obj_set_size(content, lv_obj_get_width(root), lv_obj_get_height(root) - header_h);
+    lv_obj_set_size(content, root_w, root_h - header_h);
     lv_obj_set_pos(content, 0, header_h);
     make_plain(content);
     return content;

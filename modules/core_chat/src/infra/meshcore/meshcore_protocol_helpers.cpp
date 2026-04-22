@@ -5,8 +5,14 @@
 
 #include "chat/infra/meshcore/meshcore_protocol_helpers.h"
 
+#if defined(ESP_PLATFORM)
+#include "mbedtls/aes.h"
+#include "mbedtls/md.h"
+#include "mbedtls/sha256.h"
+#else
 #include <AES.h>
 #include <SHA256.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -42,6 +48,109 @@ T clampValue(T value, T min_value, T max_value)
     }
     return value;
 }
+
+#if defined(ESP_PLATFORM)
+class Sha256Accumulator
+{
+  public:
+    Sha256Accumulator()
+    {
+        mbedtls_sha256_init(&ctx_);
+        mbedtls_sha256_starts(&ctx_, 0);
+        valid_ = true;
+    }
+
+    ~Sha256Accumulator()
+    {
+        mbedtls_sha256_free(&ctx_);
+    }
+
+    void update(const void* data, size_t len)
+    {
+        if (!valid_ || !data || len == 0)
+        {
+            return;
+        }
+        mbedtls_sha256_update(&ctx_,
+                              static_cast<const unsigned char*>(data),
+                              len);
+    }
+
+    bool finalize(uint8_t out_hash[32])
+    {
+        if (!valid_ || !out_hash)
+        {
+            return false;
+        }
+        mbedtls_sha256_finish(&ctx_, out_hash);
+        return true;
+    }
+
+  private:
+    mbedtls_sha256_context ctx_{};
+    bool valid_ = false;
+};
+
+class Aes128EcbCipher
+{
+  public:
+    Aes128EcbCipher()
+    {
+        mbedtls_aes_init(&encrypt_);
+        mbedtls_aes_init(&decrypt_);
+    }
+
+    ~Aes128EcbCipher()
+    {
+        mbedtls_aes_free(&encrypt_);
+        mbedtls_aes_free(&decrypt_);
+    }
+
+    bool setKey(const uint8_t* key, size_t len)
+    {
+        if (!key || len != kCipherKeySize)
+        {
+            return false;
+        }
+        return mbedtls_aes_setkey_enc(&encrypt_, key, static_cast<unsigned>(len * 8U)) == 0 &&
+               mbedtls_aes_setkey_dec(&decrypt_, key, static_cast<unsigned>(len * 8U)) == 0;
+    }
+
+    bool encryptBlock(uint8_t* out, const uint8_t* in)
+    {
+        return out && in &&
+               mbedtls_aes_crypt_ecb(&encrypt_, MBEDTLS_AES_ENCRYPT, in, out) == 0;
+    }
+
+    bool decryptBlock(uint8_t* out, const uint8_t* in)
+    {
+        return out && in &&
+               mbedtls_aes_crypt_ecb(&decrypt_, MBEDTLS_AES_DECRYPT, in, out) == 0;
+    }
+
+  private:
+    mbedtls_aes_context encrypt_{};
+    mbedtls_aes_context decrypt_{};
+};
+
+bool hmacSha256(const uint8_t* key,
+                size_t key_len,
+                const uint8_t* data,
+                size_t data_len,
+                uint8_t out_hash[32])
+{
+    if (!key || key_len == 0 || !out_hash)
+    {
+        return false;
+    }
+
+    static constexpr uint8_t kEmpty = 0;
+    const uint8_t* input = (data && data_len != 0) ? data : &kEmpty;
+    const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    return info &&
+           mbedtls_md_hmac(info, key, key_len, input, data_len, out_hash) == 0;
+}
+#endif
 
 } // namespace
 
@@ -138,6 +247,25 @@ uint32_t packetSignature(uint8_t payload_type, size_t path_len,
                          const uint8_t* payload, size_t payload_len)
 {
     uint8_t sig_bytes[sizeof(uint32_t)] = {};
+#if defined(ESP_PLATFORM)
+    uint8_t hash_bytes[32] = {};
+    Sha256Accumulator sha;
+    sha.update(&payload_type, sizeof(payload_type));
+    if (payload_type == kPayloadTypeTrace)
+    {
+        uint8_t p = static_cast<uint8_t>(path_len & 0xFFU);
+        sha.update(&p, sizeof(p));
+    }
+    if (payload && payload_len > 0)
+    {
+        sha.update(payload, payload_len);
+    }
+    if (!sha.finalize(hash_bytes))
+    {
+        return 0;
+    }
+    memcpy(sig_bytes, hash_bytes, sizeof(sig_bytes));
+#else
     SHA256 sha;
     sha.update(&payload_type, sizeof(payload_type));
     if (payload_type == kPayloadTypeTrace)
@@ -150,6 +278,7 @@ uint32_t packetSignature(uint8_t payload_type, size_t path_len,
         sha.update(payload, payload_len);
     }
     sha.finalize(sig_bytes, sizeof(sig_bytes));
+#endif
 
     uint32_t sig = 0;
     memcpy(&sig, sig_bytes, sizeof(sig));
@@ -285,9 +414,24 @@ void sha256Trunc(uint8_t* out_hash, size_t out_len, const uint8_t* msg, size_t m
     {
         return;
     }
+#if defined(ESP_PLATFORM)
+    uint8_t full_hash[32] = {};
+    Sha256Accumulator sha;
+    if (msg && msg_len != 0)
+    {
+        sha.update(msg, msg_len);
+    }
+    if (!sha.finalize(full_hash))
+    {
+        memset(out_hash, 0, out_len);
+        return;
+    }
+    memcpy(out_hash, full_hash, std::min(out_len, sizeof(full_hash)));
+#else
     SHA256 sha;
     sha.update(msg, static_cast<size_t>(msg_len));
     sha.finalize(out_hash, out_len);
+#endif
 }
 
 uint8_t computeChannelHash(const uint8_t* key16)
@@ -307,15 +451,30 @@ size_t aesEncrypt(const uint8_t* key16, uint8_t* dest, const uint8_t* src, size_
     {
         return 0;
     }
+#if defined(ESP_PLATFORM)
+    Aes128EcbCipher aes;
+    if (!aes.setKey(key16, kCipherKeySize))
+    {
+        return 0;
+    }
+#else
     AES128 aes;
     aes.setKey(key16, kCipherKeySize);
+#endif
 
     uint8_t* dest_ptr = dest;
     const uint8_t* src_ptr = src;
     size_t remaining = src_len;
     while (remaining >= kCipherBlockSize)
     {
+#if defined(ESP_PLATFORM)
+        if (!aes.encryptBlock(dest_ptr, src_ptr))
+        {
+            return 0;
+        }
+#else
         aes.encryptBlock(dest_ptr, src_ptr);
+#endif
         dest_ptr += kCipherBlockSize;
         src_ptr += kCipherBlockSize;
         remaining -= kCipherBlockSize;
@@ -325,7 +484,14 @@ size_t aesEncrypt(const uint8_t* key16, uint8_t* dest, const uint8_t* src, size_
         uint8_t tail[kCipherBlockSize];
         memset(tail, 0, sizeof(tail));
         memcpy(tail, src_ptr, remaining);
+#if defined(ESP_PLATFORM)
+        if (!aes.encryptBlock(dest_ptr, tail))
+        {
+            return 0;
+        }
+#else
         aes.encryptBlock(dest_ptr, tail);
+#endif
         dest_ptr += kCipherBlockSize;
     }
     return static_cast<size_t>(dest_ptr - dest);
@@ -337,15 +503,30 @@ size_t aesDecrypt(const uint8_t* key16, uint8_t* dest, const uint8_t* src, size_
     {
         return 0;
     }
+#if defined(ESP_PLATFORM)
+    Aes128EcbCipher aes;
+    if (!aes.setKey(key16, kCipherKeySize))
+    {
+        return 0;
+    }
+#else
     AES128 aes;
     aes.setKey(key16, kCipherKeySize);
+#endif
 
     uint8_t* dest_ptr = dest;
     const uint8_t* src_ptr = src;
     size_t remaining = src_len;
     while (remaining >= kCipherBlockSize)
     {
+#if defined(ESP_PLATFORM)
+        if (!aes.decryptBlock(dest_ptr, src_ptr))
+        {
+            return 0;
+        }
+#else
         aes.decryptBlock(dest_ptr, src_ptr);
+#endif
         dest_ptr += kCipherBlockSize;
         src_ptr += kCipherBlockSize;
         remaining -= kCipherBlockSize;
@@ -375,10 +556,19 @@ size_t encryptThenMac(const uint8_t* key16, const uint8_t* key32,
         return 0;
     }
 
+#if defined(ESP_PLATFORM)
+    uint8_t full_hash[32] = {};
+    if (!hmacSha256(key32, kCipherHmacKeySize, out + kCipherMacSize, enc_len, full_hash))
+    {
+        return 0;
+    }
+    memcpy(out, full_hash, kCipherMacSize);
+#else
     SHA256 sha;
     sha.resetHMAC(key32, kCipherHmacKeySize);
     sha.update(out + kCipherMacSize, enc_len);
     sha.finalizeHMAC(key32, kCipherHmacKeySize, out, kCipherMacSize);
+#endif
     return kCipherMacSize + enc_len;
 }
 
@@ -396,10 +586,19 @@ bool macThenDecrypt(const uint8_t* key16, const uint8_t* key32,
     }
 
     uint8_t expected[kCipherMacSize];
+#if defined(ESP_PLATFORM)
+    uint8_t full_hash[32] = {};
+    if (!hmacSha256(key32, kCipherHmacKeySize, src + kCipherMacSize, cipher_len, full_hash))
+    {
+        return false;
+    }
+    memcpy(expected, full_hash, sizeof(expected));
+#else
     SHA256 sha;
     sha.resetHMAC(key32, kCipherHmacKeySize);
     sha.update(src + kCipherMacSize, cipher_len);
     sha.finalizeHMAC(key32, kCipherHmacKeySize, expected, kCipherMacSize);
+#endif
     if (memcmp(expected, src, kCipherMacSize) != 0)
     {
         return false;

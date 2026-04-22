@@ -15,6 +15,7 @@
 #include "ui/screens/gps/gps_state.h"
 #include "ui/ui_common.h"
 #include "ui/widgets/map/map_tiles.h"
+#include "ui/widgets/map/map_viewport.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -715,14 +716,13 @@ void refresh_layer_popup_labels()
 
     if (s_layer_source_label != nullptr)
     {
-        const std::string text =
-            ::ui::i18n::format("Base: %s", map_source_label(map_source));
-        lv_label_set_text(s_layer_source_label, text.c_str());
+        const std::string text = ::ui::widgets::map::layer_base_summary_text(map_source);
+        ::ui::i18n::set_label_text_raw(s_layer_source_label, text.c_str());
     }
     if (s_layer_contour_label != nullptr)
     {
         ::ui::i18n::set_label_text(s_layer_contour_label,
-                                   contour ? "Contour: ON" : "Contour: OFF");
+                                   ::ui::widgets::map::layer_contour_status_key(contour));
     }
     for (uint8_t i = 0; i < 3; ++i)
     {
@@ -734,65 +734,50 @@ void refresh_layer_popup_labels()
         lv_obj_t* label = lv_obj_get_child(s_layer_contour_btn, 0);
         if (label != nullptr)
         {
-            ::ui::i18n::set_label_text(label, contour ? "Contour: ON" : "Contour: OFF");
+            ::ui::i18n::set_label_text(label,
+                                       ::ui::widgets::map::layer_contour_status_key(contour));
         }
     }
 }
 
 void layer_set_map_source(uint8_t map_source)
 {
-    app::IAppConfigFacade& config_api = app::configFacade();
-    uint8_t previous = sanitize_map_source(config_api.getConfig().map_source);
-    uint8_t normalized = sanitize_map_source(map_source);
-    if (config_api.getConfig().map_source != normalized)
+    const uint8_t previous = sanitize_map_source(app::configFacade().getConfig().map_source);
+    const uint8_t normalized = sanitize_map_source(map_source);
+    ::ui::widgets::map::LayerNotice notice{};
+    if (::ui::widgets::map::set_layer_map_source(normalized, &notice))
     {
         GPS_FLOW_LOG("[GPS][MAP][flow] layer_source change from=%u to=%u contour=%d\n",
                      previous,
                      normalized,
-                     config_api.getConfig().map_contour_enabled);
-        config_api.getConfig().map_source = normalized;
-        config_api.saveConfig();
+                     app::configFacade().getConfig().map_contour_enabled ? 1 : 0);
         update_map_tiles(false);
         log_map_tile_state("layer_source");
     }
 
-    if (!platform::ui::device::sd_ready())
+    if (notice.has_message)
     {
-        show_toast("No SD Card", 1200);
-    }
-    else if (!map_source_directory_available(normalized))
-    {
-        const std::string message =
-            ::ui::i18n::format("%s layer missing", map_source_label(normalized));
-        show_toast(message.c_str(), 1600);
+        show_toast(notice.message, notice.duration_ms);
     }
     refresh_layer_popup_labels();
 }
 
 void layer_toggle_contour()
 {
-    app::IAppConfigFacade& config_api = app::configFacade();
-    bool previous = config_api.getConfig().map_contour_enabled;
-    bool enabled = !config_api.getConfig().map_contour_enabled;
+    const bool previous = app::configFacade().getConfig().map_contour_enabled;
+    ::ui::widgets::map::LayerNotice notice{};
+    ::ui::widgets::map::toggle_layer_contour(&notice);
+    const bool enabled = app::configFacade().getConfig().map_contour_enabled;
     GPS_FLOW_LOG("[GPS][MAP][flow] contour toggle from=%d to=%d src=%u\n",
                  previous,
                  enabled,
-                 sanitize_map_source(config_api.getConfig().map_source));
-    config_api.getConfig().map_contour_enabled = enabled;
-    config_api.saveConfig();
+                 sanitize_map_source(app::configFacade().getConfig().map_source));
     update_map_tiles(false);
     log_map_tile_state("contour_toggle");
 
-    if (enabled)
+    if (notice.has_message)
     {
-        if (!platform::ui::device::sd_ready())
-        {
-            show_toast("No SD Card", 1200);
-        }
-        else if (!contour_directory_available())
-        {
-            show_toast("Contour data missing", 1600);
-        }
+        show_toast(notice.message, notice.duration_ms);
     }
 
     refresh_layer_popup_labels();
@@ -955,10 +940,22 @@ void show_layer_popup()
         lv_obj_set_scroll_dir(action_list, LV_DIR_VER);
         lv_obj_set_scrollbar_mode(action_list, LV_SCROLLBAR_MODE_AUTO);
 
-        osm_btn = create_action_btn(action_list, "OSM", on_layer_source_clicked, static_cast<uintptr_t>(0));
-        terrain_btn = create_action_btn(action_list, "Terrain", on_layer_source_clicked, static_cast<uintptr_t>(1));
-        satellite_btn = create_action_btn(action_list, "Satellite", on_layer_source_clicked, static_cast<uintptr_t>(2));
-        contour_btn = create_action_btn(action_list, "Contour: OFF", on_layer_contour_clicked, static_cast<uintptr_t>(0));
+        osm_btn = create_action_btn(action_list,
+                                    ::ui::widgets::map::layer_map_source_label_key(0),
+                                    on_layer_source_clicked,
+                                    static_cast<uintptr_t>(0));
+        terrain_btn = create_action_btn(action_list,
+                                        ::ui::widgets::map::layer_map_source_label_key(1),
+                                        on_layer_source_clicked,
+                                        static_cast<uintptr_t>(1));
+        satellite_btn = create_action_btn(action_list,
+                                          ::ui::widgets::map::layer_map_source_label_key(2),
+                                          on_layer_source_clicked,
+                                          static_cast<uintptr_t>(2));
+        contour_btn = create_action_btn(action_list,
+                                        ::ui::widgets::map::layer_contour_status_key(false),
+                                        on_layer_contour_clicked,
+                                        static_cast<uintptr_t>(0));
         close_btn = create_action_btn(action_list, "Close", on_layer_close_clicked, static_cast<uintptr_t>(0));
     }
     else
@@ -998,11 +995,23 @@ void show_layer_popup()
         lv_obj_set_style_border_width(list, 0, LV_PART_MAIN);
         lv_obj_clear_flag(list, LV_OBJ_FLAG_SCROLLABLE);
 
-        osm_btn = create_action_btn(list, "OSM", on_layer_source_clicked, static_cast<uintptr_t>(0));
-        terrain_btn = create_action_btn(list, "Terrain", on_layer_source_clicked, static_cast<uintptr_t>(1));
-        satellite_btn = create_action_btn(list, "Satellite", on_layer_source_clicked, static_cast<uintptr_t>(2));
-        contour_btn = create_action_btn(list, "Contour: OFF", on_layer_contour_clicked, static_cast<uintptr_t>(0));
-        close_btn = create_action_btn(list, "Cancel", on_layer_close_clicked, static_cast<uintptr_t>(0));
+        osm_btn = create_action_btn(list,
+                                    ::ui::widgets::map::layer_map_source_label_key(0),
+                                    on_layer_source_clicked,
+                                    static_cast<uintptr_t>(0));
+        terrain_btn = create_action_btn(list,
+                                        ::ui::widgets::map::layer_map_source_label_key(1),
+                                        on_layer_source_clicked,
+                                        static_cast<uintptr_t>(1));
+        satellite_btn = create_action_btn(list,
+                                          ::ui::widgets::map::layer_map_source_label_key(2),
+                                          on_layer_source_clicked,
+                                          static_cast<uintptr_t>(2));
+        contour_btn = create_action_btn(list,
+                                        ::ui::widgets::map::layer_contour_status_key(false),
+                                        on_layer_contour_clicked,
+                                        static_cast<uintptr_t>(0));
+        close_btn = create_action_btn(list, "Close", on_layer_close_clicked, static_cast<uintptr_t>(0));
     }
 
     s_layer_source_btns[0] = osm_btn;

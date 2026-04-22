@@ -59,4 +59,26 @@ void set_content_label_text(lv_obj_t* label, const char* english);
 void set_content_label_text_raw(lv_obj_t* label, const char* text);
 void set_label_text_fmt(lv_obj_t* label, const char* english_fmt, ...);
 
+#if defined(__cpp_char8_t)
+inline void set_label_text(lv_obj_t* label, const char8_t* english)
+{
+    set_label_text(label, reinterpret_cast<const char*>(english));
+}
+
+inline void set_label_text_raw(lv_obj_t* label, const char8_t* text)
+{
+    set_label_text_raw(label, reinterpret_cast<const char*>(text));
+}
+
+inline void set_content_label_text(lv_obj_t* label, const char8_t* english)
+{
+    set_content_label_text(label, reinterpret_cast<const char*>(english));
+}
+
+inline void set_content_label_text_raw(lv_obj_t* label, const char8_t* text)
+{
+    set_content_label_text_raw(label, reinterpret_cast<const char*>(text));
+}
+#endif
+
 } // namespace ui::i18n
