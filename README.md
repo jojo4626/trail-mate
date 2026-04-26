@@ -684,3 +684,5 @@ Constructive feedback, real-world testing reports, and implementation experience
 You are not required to open Issues before contacting the author directly.
 
 Thank you for taking the time to examine and use this project.
+
+# Test de compilation
