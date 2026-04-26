@@ -99,7 +99,7 @@ jobs:
           fi
 
       - name: Prepare web flasher image
-        if: matrix.env == 'tlora_pager_sx1262' || matrix.env == 'tdeck' || matrix.env == 'lilygo_twatch_s3'
+        if: matrix.env == 'tlora_pager_sx1262' || matrix.env == 'tdeck' || matrix.env == 'lilygo_twatch_s3' || matrix.env == 't_display_p4_amoled'
         run: |
           python scripts/prepare_webflash_release.py \
             --env ${{ matrix.env }} \
